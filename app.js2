@@ -1,0 +1,1295 @@
+// =====================================================================
+// FIREBASE V9 MODULAR SDK IMPORTS (CDN)
+// =====================================================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getDatabase, ref, push, onValue, remove, serverTimestamp, set, onDisconnect, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+// =====================================================================
+// FIREBASE CONFIGURATION (Using your specific Realtime DB details)
+// =====================================================================
+const firebaseConfig = {
+    apiKey: "AIzaSyAhZXEXJmLaxcnz7nTKuwhDhSuYQSKtBQs",
+    authDomain: "z-chat11.firebaseapp.com",
+    databaseURL: "https://z-chat11-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "z-chat11",
+    storageBucket: "z-chat11.firebasestorage.app",
+    messagingSenderId: "373379915510",
+    appId: "1:373379915510:web:8b4b4502f6facb40c6d6d7"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+
+// =====================================================================
+// APP STATE & DOM ELEMENTS
+// =====================================================================
+let currentUsername = localStorage.getItem('og_username') || null;
+let currentRoom = "global";
+let messagesData = []; // Store current room messages for Z-Scanner
+let userContacts = []; // Store user's contacts/friends
+
+// DOM
+const authScreen = document.getElementById('auth-screen');
+const appScreen = document.getElementById('app-screen');
+const usernameInput = document.getElementById('username-input');
+const loginBtn = document.getElementById('login-btn');
+const displayUsername = document.getElementById('display-username');
+const chatMessages = document.getElementById('chat-messages');
+const chatForm = document.getElementById('chat-form');
+const messageInput = document.getElementById('message-input');
+const roomList = document.getElementById('room-list');
+const contactList = document.getElementById('contact-list');
+const contactResults = document.getElementById('contact-results');
+const searchUserInput = document.getElementById('search-user-input');
+const tabRooms = document.getElementById('tab-rooms');
+const tabContacts = document.getElementById('tab-contacts');
+const currentRoomName = document.getElementById('current-room-name');
+const notifySound = document.getElementById('notify-sound');
+const searchToggleBtn = document.getElementById('search-toggle-btn');
+const searchMessagesInput = document.getElementById('search-messages-input');
+const avatarDisplay = document.getElementById('avatar-display');
+const avatarEmoji = document.getElementById('avatar-emoji');
+const avatarModal = document.getElementById('avatar-modal');
+const closeAvatarModal = document.getElementById('close-avatar-modal');
+const saveAvatarBtn = document.getElementById('save-avatar');
+const themeBtn = document.getElementById('theme-btn');
+const themeModal = document.getElementById('theme-modal');
+const closeThemeModal = document.getElementById('close-theme-modal');
+const saveThemeBtn = document.getElementById('save-theme');
+const statusDisplay = document.getElementById('status-display');
+const statusText = document.getElementById('status-text');
+const statusModal = document.getElementById('status-modal');
+const closeStatusModal = document.getElementById('close-status-modal');
+const statusInput = document.getElementById('status-input');
+const updateStatusSubmit = document.getElementById('update-status-submit');
+const typingIndicator = document.getElementById('typing-indicator');
+
+// Games DOM elements
+const gamesModal = document.getElementById('games-modal');
+const closeGamesModal = document.getElementById('close-games-modal');
+const gamesBtn = document.getElementById('games-btn');
+const tictactoeBoard = document.getElementById('tictactoe-board');
+const tictactoeStatus = document.getElementById('tictactoe-status');
+const resetTictactoe = document.getElementById('reset-tictactoe');
+const quizQuestion = document.getElementById('quiz-question');
+const quizOptions = document.getElementById('quiz-options');
+const quizStatus = document.getElementById('quiz-status');
+const startQuiz = document.getElementById('start-quiz');
+const nextQuestion = document.getElementById('next-question');
+const tictactoeWins = document.getElementById('tictactoe-wins');
+const quizHighScore = document.getElementById('quiz-high-score');
+const resetStats = document.getElementById('reset-stats');
+
+// Icons Initialize
+lucide.createIcons();
+
+// =====================================================================
+// 1. AUTHENTICATION (Anonymous + LocalStorage)
+// =====================================================================
+onAuthStateChanged(auth, async (user) => {
+    if (user && currentUsername) {
+        // User is logged in
+        authScreen.classList.add('hidden');
+        appScreen.classList.remove('hidden');
+        displayUsername.innerText = `@${currentUsername} 🟢`;
+        
+        // Set user as online
+        await setupUserPresence();
+        loadUserAvatar();        // Load user avatar
+        loadUserTheme();         // Load user theme
+        loadUserStatus();        // Load user status
+        loadUserContacts();      // Load contacts
+        loadUserGroups();        // Load custom groups
+        updateStreak();
+        loadRooms();
+        listenForMessages();
+    } else {
+        // User needs to login
+        authScreen.classList.remove('hidden');
+        appScreen.classList.add('hidden');
+    }
+});
+
+loginBtn.addEventListener('click', async () => {
+    const name = usernameInput.value.trim();
+    
+    // Validation
+    if (name.length < 3) {
+        usernameInput.classList.add('border-red-500');
+        return alert("Username must be at least 3 characters.");
+    }
+    if (name.length > 20) {
+        return alert("Username must be 20 characters or less.");
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+        return alert("Username can only contain letters, numbers, underscore, and hyphen.");
+    }
+    
+    usernameInput.classList.remove('border-red-500');
+    loginBtn.disabled = true;
+    loginBtn.innerText = 'Initializing...';
+    
+    currentUsername = name;
+    localStorage.setItem('og_username', name);
+    
+    try {
+        await signInAnonymously(auth);
+    } catch (error) {
+        loginBtn.disabled = false;
+        loginBtn.innerText = 'Initialize Uplink';
+        console.error("Auth Error:", error);
+        alert(`Connection failed: ${error?.code || 'unknown'} - ${error?.message || 'Please check Firebase settings (Auth/DB).'} `);
+    }
+});
+
+document.getElementById('logout-btn').addEventListener('click', async () => {
+    if (!confirm('Are you sure you want to logout?')) return;
+    
+    try {
+        localStorage.removeItem('og_username');
+        currentUsername = null;
+        await signOut(auth);
+    } catch (error) {
+        console.error("Logout Error:", error);
+        alert("Logout failed. Please refresh the page.");
+    }
+});
+
+// =====================================================================
+// 1A. PRESENCE TRACKING (Online/Offline Status)
+// =====================================================================
+let userStatusMap = {}; // Track online users
+
+async function setupUserPresence() {
+    if (!currentUsername) return;
+    
+    const userStatusRef = ref(db, `users/${currentUsername}`);
+    
+    // Set user as online
+    await set(userStatusRef, {
+        username: currentUsername,
+        status: 'online',
+        lastSeen: serverTimestamp()
+    });
+    
+    // Set offline on disconnect
+    onDisconnect(userStatusRef).set({
+        username: currentUsername,
+        status: 'offline',
+        lastSeen: serverTimestamp()
+    });
+    
+    // Listen to all users' status
+    const usersRef = ref(db, 'users');
+    onValue(usersRef, (snapshot) => {
+        userStatusMap = {};
+        snapshot.forEach((childSnapshot) => {
+            const data = childSnapshot.val();
+            userStatusMap[data.username] = data.status;
+        });
+    });
+}
+
+function getUserStatus(username) {
+    return userStatusMap[username] || 'offline';
+}
+
+// =====================================================================
+// 2. ROOM MANAGEMENT
+// =====================================================================
+const rooms = [
+    { id: 'global', name: 'Global Hub', icon: 'globe' },
+    { id: 'gaming', name: 'Gaming Squad', icon: 'gamepad-2' },
+    { id: 'study', name: 'Exam Prep', icon: 'book-open' }
+];
+let customGroups = [];
+
+function loadRooms() {
+    roomList.innerHTML = '';
+    rooms.forEach(room => {
+        const btn = document.createElement('button');
+        btn.className = `w-full text-left p-3 rounded-lg mb-1 flex items-center gap-3 transition ${room.id === currentRoom ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400' : 'hover:bg-white/5 text-zinc-400'}`;
+        btn.innerHTML = `<i data-lucide="${room.icon}" class="w-4 h-4"></i> <span class="font-bold text-sm uppercase tracking-wider">${room.name}</span>`;
+        
+        btn.addEventListener('click', () => {
+            currentRoom = room.id;
+            currentRoomName.innerText = room.name;
+            loadRooms();
+            listenForMessages();
+        });
+        
+        roomList.appendChild(btn);
+    });
+    
+    // Load custom groups
+    if (customGroups.length > 0) {
+        const groupLabel = document.createElement('div');
+        groupLabel.className = 'text-[10px] text-zinc-600 font-bold uppercase px-1 py-2 mt-2';
+        groupLabel.innerText = 'Your Groups';
+        roomList.appendChild(groupLabel);
+        
+        customGroups.forEach(group => {
+            const btn = document.createElement('button');
+            btn.className = `w-full text-left p-3 rounded-lg mb-1 flex items-center justify-between transition ${group.id === currentRoom ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400' : 'hover:bg-white/5 text-zinc-400'}`;
+            btn.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <i data-lucide="users" class="w-4 h-4"></i> 
+                    <span class="font-bold text-sm">${group.name}</span>
+                </div>
+            `;
+            
+            btn.addEventListener('click', () => {
+                currentRoom = group.id;
+                currentRoomName.innerText = group.name;
+                loadRooms();
+                listenForMessages();
+            });
+            
+            roomList.appendChild(btn);
+        });
+    }
+    
+    lucide.createIcons();
+}
+
+function loadUserGroups() {
+    if (!currentUsername) return;
+    const groupsRef = ref(db, `userGroups/${currentUsername}`);
+    onValue(groupsRef, (snapshot) => {
+        customGroups = [];
+        snapshot.forEach((child) => {
+            customGroups.push({
+                id: child.key,
+                name: child.val().name || child.key,
+                creator: child.val().creator
+            });
+        });
+        loadRooms();
+    });
+}
+
+// Group Creation Modal
+const createGroupModal = document.getElementById('create-group-modal');
+const createGroupBtn = document.getElementById('create-group-btn');
+const closeGroupModal = document.getElementById('close-group-modal');
+const createGroupSubmit = document.getElementById('create-group-submit');
+const groupNameInput = document.getElementById('group-name-input');
+const groupDescInput = document.getElementById('group-desc-input');
+
+createGroupBtn.addEventListener('click', () => {
+    createGroupModal.classList.remove('hidden');
+    groupNameInput.focus();
+});
+
+closeGroupModal.addEventListener('click', () => {
+    createGroupModal.classList.add('hidden');
+    groupNameInput.value = '';
+    groupDescInput.value = '';
+});
+
+createGroupSubmit.addEventListener('click', async () => {
+    const name = groupNameInput.value.trim();
+    if (!name) {
+        alert('Group name is required');
+        return;
+    }
+    
+    const groupId = Date.now().toString();
+    const desc = groupDescInput.value.trim();
+    
+    try {
+        const groupRef = ref(db, `groups/${groupId}`);
+        await set(groupRef, {
+            id: groupId,
+            name: name,
+            description: desc,
+            creator: currentUsername,
+            createdAt: serverTimestamp(),
+            members: { [currentUsername]: true }
+        });
+        
+        const userGroupRef = ref(db, `userGroups/${currentUsername}/${groupId}`);
+        await set(userGroupRef, {
+            name: name,
+            creator: currentUsername,
+            joinedAt: serverTimestamp()
+        });
+        
+        createGroupModal.classList.add('hidden');
+        groupNameInput.value = '';
+        groupDescInput.value = '';
+        loadUserGroups();
+        alert('Group created successfully!');
+    } catch (error) {
+        console.error("Failed to create group:", error);
+        alert("Failed to create group. Try again.");
+    }
+});
+
+// =====================================================================
+// 2B. STATUS MANAGEMENT
+// =====================================================================
+let userStatus = '';
+
+function loadUserStatus() {
+    if (!currentUsername) return;
+    const statusRef = ref(db, `userStatus/${currentUsername}`);
+    onValue(statusRef, (snapshot) => {
+        const data = snapshot.val();
+        userStatus = data?.status || '';
+        statusText.textContent = userStatus || 'Set your status...';
+    });
+}
+
+statusDisplay.addEventListener('click', () => {
+    statusModal.classList.remove('hidden');
+    statusInput.value = userStatus;
+    statusInput.focus();
+});
+
+closeStatusModal.addEventListener('click', () => {
+    statusModal.classList.add('hidden');
+});
+
+updateStatusSubmit.addEventListener('click', async () => {
+    const newStatus = statusInput.value.trim();
+    if (!currentUsername) return;
+    
+    try {
+        const statusRef = ref(db, `userStatus/${currentUsername}`);
+        await set(statusRef, {
+            status: newStatus,
+            updatedAt: serverTimestamp()
+        });
+        
+        statusModal.classList.add('hidden');
+        userStatus = newStatus;
+        statusText.textContent = newStatus || 'Set your status...';
+    } catch (error) {
+        console.error("Failed to update status:", error);
+        alert("Failed to update status");
+    }
+});
+
+// Quick status presets
+window.setQuickStatus = (preset) => {
+    statusInput.value = preset;
+};
+
+// =====================================================================
+// 2B. AVATAR MANAGEMENT
+// =====================================================================
+let selectedAvatar = '🎮';
+let userAvatar = '🎮';
+
+function loadUserAvatar() {
+    if (!currentUsername) return;
+    const avatarRef = ref(db, `userAvatars/${currentUsername}`);
+    onValue(avatarRef, (snapshot) => {
+        const data = snapshot.val();
+        userAvatar = data?.avatar || '🎮';
+        avatarEmoji.textContent = userAvatar;
+    });
+}
+
+avatarDisplay.addEventListener('click', () => {
+    avatarModal.classList.remove('hidden');
+    // Highlight current avatar
+    document.querySelectorAll('.avatar-option').forEach(btn => {
+        btn.classList.remove('ring-2', 'ring-purple-400');
+        if (btn.textContent === userAvatar) {
+            btn.classList.add('ring-2', 'ring-purple-400');
+        }
+    });
+});
+
+closeAvatarModal.addEventListener('click', () => {
+    avatarModal.classList.add('hidden');
+});
+
+window.selectAvatar = (emoji) => {
+    selectedAvatar = emoji;
+    document.querySelectorAll('.avatar-option').forEach(btn => {
+        btn.classList.remove('ring-2', 'ring-purple-400');
+        if (btn.textContent === emoji) {
+            btn.classList.add('ring-2', 'ring-purple-400');
+        }
+    });
+};
+
+saveAvatarBtn.addEventListener('click', async () => {
+    if (!currentUsername) return;
+    
+    try {
+        const avatarRef = ref(db, `userAvatars/${currentUsername}`);
+        await set(avatarRef, {
+            avatar: selectedAvatar,
+            updatedAt: serverTimestamp()
+        });
+        
+        avatarModal.classList.add('hidden');
+        userAvatar = selectedAvatar;
+        avatarEmoji.textContent = userAvatar;
+        alert('Avatar updated! 🎉');
+    } catch (error) {
+        console.error("Failed to update avatar:", error);
+        alert("Failed to update avatar");
+    }
+});
+
+// =====================================================================
+// 2C. THEME MANAGEMENT
+// =====================================================================
+let currentTheme = 'neon';
+const themes = {
+    neon: {
+        primary: 'cyan',
+        secondary: 'purple',
+        accent: 'orange'
+    },
+    anime: {
+        primary: 'pink',
+        secondary: 'purple',
+        accent: 'yellow'
+    },
+    gaming: {
+        primary: 'green',
+        secondary: 'blue',
+        accent: 'red'
+    },
+    dark: {
+        primary: 'gray',
+        secondary: 'zinc',
+        accent: 'white'
+    }
+};
+
+function loadUserTheme() {
+    if (!currentUsername) return;
+    const themeRef = ref(db, `userThemes/${currentUsername}`);
+    onValue(themeRef, (snapshot) => {
+        const data = snapshot.val();
+        currentTheme = data?.theme || 'neon';
+        applyTheme(currentTheme);
+    });
+}
+
+function applyTheme(themeName) {
+    const theme = themes[themeName];
+    if (!theme) return;
+    
+    // Update CSS custom properties
+    document.documentElement.style.setProperty('--theme-primary', theme.primary);
+    document.documentElement.style.setProperty('--theme-secondary', theme.secondary);
+    document.documentElement.style.setProperty('--theme-accent', theme.accent);
+    
+    // Update theme-specific classes
+    document.body.className = `bg-[#050505] text-white h-screen overflow-hidden font-inter selection:bg-${theme.primary}-500/30`;
+    
+    // Update specific elements
+    const glassPanels = document.querySelectorAll('.glass-panel');
+    glassPanels.forEach(panel => {
+        panel.style.background = themeName === 'dark' ? 'rgba(5, 5, 5, 0.9)' : 'rgba(10, 10, 10, 0.7)';
+    });
+    
+    currentTheme = themeName;
+}
+
+// themeBtn/themeModal/closeThemeModal/saveThemeBtn are already declared earlier in the DOM section.
+
+themeBtn.addEventListener('click', () => {
+    themeModal.classList.remove('hidden');
+    // Highlight current theme
+    document.querySelectorAll('.theme-option').forEach(btn => {
+        btn.classList.remove('border-opacity-100');
+        if (btn.onclick.toString().includes(currentTheme)) {
+            btn.classList.add('border-opacity-100');
+        }
+    });
+});
+
+closeThemeModal.addEventListener('click', () => {
+    themeModal.classList.add('hidden');
+});
+
+window.selectTheme = (themeName) => {
+    document.querySelectorAll('.theme-option').forEach(btn => {
+        btn.classList.remove('border-opacity-100');
+    });
+    // Apply preview
+    applyTheme(themeName);
+};
+
+saveThemeBtn.addEventListener('click', async () => {
+    if (!currentUsername) return;
+    
+    try {
+        const themeRef = ref(db, `userThemes/${currentUsername}`);
+        await set(themeRef, {
+            theme: currentTheme,
+            updatedAt: serverTimestamp()
+        });
+        
+        themeModal.classList.add('hidden');
+        alert('Theme applied! 🎨');
+    } catch (error) {
+        console.error("Failed to save theme:", error);
+        alert("Failed to save theme");
+    }
+});
+
+// =====================================================================
+// 2D. CONTACT MANAGEMENT
+// =====================================================================
+
+// Tab switching
+tabRooms.addEventListener('click', () => {
+    roomList.classList.remove('hidden');
+    contactList.classList.add('hidden');
+    tabRooms.classList.add('border-cyan-500', 'text-cyan-400');
+    tabRooms.classList.remove('border-transparent', 'text-zinc-500');
+    tabContacts.classList.remove('border-cyan-500', 'text-cyan-400');
+    tabContacts.classList.add('border-transparent', 'text-zinc-500');
+});
+
+tabContacts.addEventListener('click', () => {
+    roomList.classList.add('hidden');
+    contactList.classList.remove('hidden');
+    tabContacts.classList.add('border-cyan-500', 'text-cyan-400');
+    tabContacts.classList.remove('border-transparent', 'text-zinc-500');
+    tabRooms.classList.remove('border-cyan-500', 'text-cyan-400');
+    tabRooms.classList.add('border-transparent', 'text-zinc-500');
+    loadContacts();
+});
+
+function loadUserContacts() {
+    if (!currentUsername) return;
+    const contactsRef = ref(db, `contacts/${currentUsername}`);
+    onValue(contactsRef, (snapshot) => {
+        userContacts = [];
+        snapshot.forEach((child) => {
+            userContacts.push(child.key);
+        });
+    });
+}
+
+function loadContacts() {
+    contactResults.innerHTML = '';
+    
+    if (userContacts.length === 0) {
+        contactResults.innerHTML = '<div class="text-zinc-500 text-xs text-center py-4">No contacts yet. Search to add friends!</div>';
+        return;
+    }
+    
+    userContacts.forEach(contact => {
+        const status = getUserStatus(contact);
+        const statusIcon = status === 'online' ? '🟢' : '⚪';
+        
+        // Fetch user's status text
+        const userStatusRef = ref(db, `userStatus/${contact}`);
+        onValue(userStatusRef, (snapshot) => {
+            const data = snapshot.val();
+            const statusText = data?.status || '';
+            
+            const btn = document.createElement('button');
+            btn.className = 'w-full text-left p-3 rounded-lg bg-white/5 hover:bg-white/10 transition flex justify-between items-start';
+            btn.innerHTML = `
+                <div class="flex-1">
+                    <div class="text-sm font-bold text-cyan-400">@${contact} ${statusIcon}</div>
+                    ${statusText ? `<div class="text-xs text-zinc-400 mt-1">${statusText}</div>` : ''}
+                </div>
+                <button onclick="removeContact('${contact}')" class="text-red-500 hover:text-red-400 text-xs ml-2"><i data-lucide="x" class="w-4 h-4"></i></button>
+            `;
+            
+            // Replace or append the button
+            const existing = Array.from(contactResults.children).find(el => el.textContent.includes(`@${contact}`));
+            if (existing) {
+                existing.replaceWith(btn);
+            } else {
+                contactResults.appendChild(btn);
+            }
+            lucide.createIcons();
+        }, { onlyOnce: true });
+    });
+}
+
+// Search for users
+searchUserInput.addEventListener('input', async (e) => {
+    const search = e.target.value.trim().toLowerCase();
+    if (search.length < 2) {
+        loadContacts();
+        return;
+    }
+    
+    contactResults.innerHTML = '';
+    const usersRef = ref(db, 'users');
+    onValue(usersRef, (snapshot) => {
+        const results = [];
+        snapshot.forEach((child) => {
+            const username = child.key;
+            if (username.toLowerCase().includes(search) && username !== currentUsername) {
+                results.push(username);
+            }
+        });
+        
+        if (results.length === 0) {
+            contactResults.innerHTML = '<div class="text-zinc-500 text-xs text-center py-4">No users found</div>';
+            return;
+        }
+        
+        results.forEach(username => {
+            const isContact = userContacts.includes(username);
+            const status = getUserStatus(username);
+            const statusIcon = status === 'online' ? '🟢' : '⚪';
+            
+            const btn = document.createElement('button');
+            btn.className = 'w-full text-left p-3 rounded-lg bg-white/5 hover:bg-white/10 transition flex justify-between items-center';
+            btn.innerHTML = `
+                <span class="text-sm font-bold text-purple-400">@${username} ${statusIcon}</span>
+                <button onclick="${isContact ? `removeContact('${username}')` : `addContact('${username}')`}" class="text-${isContact ? 'red' : 'green'}-500 hover:text-${isContact ? 'red' : 'green'}-400 text-xs">
+                    <i data-lucide="${isContact ? 'x' : 'plus'}" class="w-4 h-4"></i>
+                </button>
+            `;
+            contactResults.appendChild(btn);
+        });
+        lucide.createIcons();
+    }, { onlyOnce: true });
+});
+
+// Add contact
+window.addContact = async (username) => {
+    if (!currentUsername) return;
+    const contactRef = ref(db, `contacts/${currentUsername}/${username}`);
+    await set(contactRef, true);
+    loadUserContacts();
+    searchUserInput.value = '';
+    loadContacts();
+};
+
+// Remove contact
+window.removeContact = async (username) => {
+    if (!confirm(`Remove @${username} from contacts?`)) return;
+    const contactRef = ref(db, `contacts/${currentUsername}/${username}`);
+    await remove(contactRef);
+    loadUserContacts();
+    searchUserInput.value = '';
+    loadContacts();
+};
+
+// =====================================================================
+// 3. REALTIME MESSAGING
+// =====================================================================
+function listenForMessages() {
+    // Clean up old observer
+    if (readReceiptObserver) {
+        readReceiptObserver.disconnect();
+    }
+    readReceiptObserver = setupReadReceipts();
+    
+    const messagesRef = ref(db, `messages/${currentRoom}`);
+    
+    // onValue listens for ANY change in the room and returns the whole list
+    onValue(messagesRef, (snapshot) => {
+        chatMessages.innerHTML = '';
+        messagesData = []; // Clear local storage for scanner
+        let isNewMessage = false;
+
+        snapshot.forEach((childSnapshot) => {
+            const data = childSnapshot.val();
+            const key = childSnapshot.key;
+            messagesData.push(data); // Save for scanner
+            renderMessage(data, key);
+            
+            // Observe the message for read receipts
+            if (readReceiptObserver) {
+                const lastMsg = chatMessages.lastChild;
+                if (lastMsg && data.user !== currentUsername) { // Don't track own messages
+                    lastMsg.dataset.msgKey = key;
+                    readReceiptObserver.observe(lastMsg);
+                }
+            }
+            isNewMessage = true;
+        });
+
+        // Show empty state if no messages
+        if (!isNewMessage) {
+            chatMessages.innerHTML = `
+                <div class="flex flex-col items-center justify-center h-full text-center text-zinc-500">
+                    <div class="text-4xl mb-4">💬</div>
+                    <p class="text-sm font-bold">No messages yet</p>
+                    <p class="text-xs mt-2">Start a conversation!</p>
+                </div>
+            `;
+        }
+
+        if (isNewMessage) {
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            // Play sound if last message is not from me
+            const lastMsg = messagesData[messagesData.length - 1];
+            if (lastMsg && lastMsg.user !== currentUsername) {
+                notifySound.play().catch(e => console.log("Audio play prevented by browser"));
+            }
+        }
+    });
+}
+
+function renderMessage(data, key) {
+    const isMe = data.user === currentUsername;
+    const timeString = data.timestamp ? new Date(data.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Just now';
+    const userStatus = getUserStatus(data.user);
+    const statusIcon = userStatus === 'online' ? '🟢' : '⚪';
+    
+    // Delivery/Read status indicator (only show for sent messages)
+    let deliveryStatus = '';
+    if (isMe) {
+        if (data.read || (data.readBy && Object.keys(data.readBy).length > 0)) {
+            deliveryStatus = ' ✓✓';  // Read
+        } else if (data.delivered) {
+            deliveryStatus = ' ✓';   // Delivered
+        }
+    }
+    
+    // Get reactions for this message
+    const reactions = data.reactions || {};
+    const reactionCounts = {};
+    const userReactions = {};
+    
+    Object.values(reactions).forEach(reaction => {
+        reactionCounts[reaction.emoji] = (reactionCounts[reaction.emoji] || 0) + 1;
+        if (reaction.user === currentUsername) {
+            userReactions[reaction.emoji] = true;
+        }
+    });
+    
+    // Z-Scanner keyword highlight logic
+    const keywords = ['urgent', 'exam', 'important'];
+    let safeText = data.text;
+    keywords.forEach(word => {
+        const regex = new RegExp(`\\b${word}\\b`, 'gi');
+        safeText = safeText.replace(regex, match => `<span class="highlight-word">${match}</span>`);
+    });
+
+    const div = document.createElement('div');
+    div.className = `flex flex-col msg-enter ${isMe ? 'items-end' : 'items-start'}`;
+    
+    // Build reactions display
+    let reactionsHTML = '';
+    if (Object.keys(reactionCounts).length > 0) {
+        reactionsHTML = '<div class="flex flex-wrap gap-1 mt-2">';
+        Object.entries(reactionCounts).forEach(([emoji, count]) => {
+            const isUserReaction = userReactions[emoji];
+            reactionsHTML += `<button onclick="toggleReaction('${key}', '${emoji}')" class="reaction-btn px-2 py-1 rounded-full text-xs bg-white/10 hover:bg-white/20 transition ${isUserReaction ? 'bg-cyan-500/20 border border-cyan-500/50' : ''}">${emoji} ${count}</button>`;
+        });
+        reactionsHTML += '</div>';
+    }
+    
+    div.innerHTML = `
+        <div class="flex items-end gap-2 max-w-[80%]">
+            ${isMe ? `<button onclick="deleteMsg('${key}')" class="text-zinc-700 hover:text-red-500 mb-1"><i data-lucide="trash-2" class="w-4 h-4"></i></button>` : ''}
+            <div class="group relative">
+                ${!isMe ? `<span class="text-[10px] text-zinc-500 font-bold ml-1 mb-1 block">@${data.user} ${statusIcon}</span>` : ''}
+                <div class="p-4 ${isMe ? 'bubble-sent text-cyan-50' : 'bubble-received text-purple-50'} text-sm leading-relaxed word-break break-words">
+                    ${safeText}
+                </div>
+                <span class="text-[9px] text-zinc-600 font-bold mt-1 inline-block ${isMe ? 'float-right' : 'float-left'}">${timeString}${deliveryStatus}</span>
+                
+                ${reactionsHTML}
+                
+                <!-- Reaction picker (shows on hover) -->
+                <div class="absolute bottom-full mb-2 opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 rounded-full p-2 flex gap-1">
+                    <button onclick="addReaction('${key}', '❤️')" class="text-lg hover:scale-125 transition">❤️</button>
+                    <button onclick="addReaction('${key}', '😂')" class="text-lg hover:scale-125 transition">😂</button>
+                    <button onclick="addReaction('${key}', '😮')" class="text-lg hover:scale-125 transition">😮</button>
+                    <button onclick="addReaction('${key}', '😢')" class="text-lg hover:scale-125 transition">😢</button>
+                    <button onclick="addReaction('${key}', '👍')" class="text-lg hover:scale-125 transition">👍</button>
+                    <button onclick="addReaction('${key}', '👎')" class="text-lg hover:scale-125 transition">👎</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    chatMessages.appendChild(div);
+    lucide.createIcons();
+}
+
+// =====================================================================
+// 7. REACTION SYSTEM
+// =====================================================================
+window.addReaction = async (messageKey, emoji) => {
+    if (!currentUsername) return;
+    
+    try {
+        const reactionRef = ref(db, `messages/${currentRoom}/${messageKey}/reactions/${currentUsername}`);
+        await set(reactionRef, {
+            emoji: emoji,
+            user: currentUsername,
+            timestamp: serverTimestamp()
+        });
+    } catch (error) {
+        console.error("Failed to add reaction:", error);
+    }
+};
+
+window.toggleReaction = async (messageKey, emoji) => {
+    if (!currentUsername) return;
+    
+    try {
+        const reactionRef = ref(db, `messages/${currentRoom}/${messageKey}/reactions/${currentUsername}`);
+        const snapshot = await get(reactionRef);
+        
+        if (snapshot.exists() && snapshot.val().emoji === emoji) {
+            // Remove reaction
+            await remove(reactionRef);
+        } else {
+            // Add/update reaction
+            await set(reactionRef, {
+                emoji: emoji,
+                user: currentUsername,
+                timestamp: serverTimestamp()
+            });
+        }
+    } catch (error) {
+        console.error("Failed to toggle reaction:", error);
+    }
+};
+
+chatForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const text = messageInput.value.trim();
+    if (!text) return;
+    if (text.length > 500) {
+        alert("Message is too long (max 500 characters)");
+        return;
+    }
+
+    const button = chatForm.querySelector('button');
+    const originalHTML = button.innerHTML;
+    button.disabled = true;
+    messageInput.value = '';
+    
+    try {
+        await push(ref(db, `messages/${currentRoom}`), {
+            text: text,
+            user: currentUsername,
+            timestamp: serverTimestamp(),
+            delivered: true,  // Message delivered when sent
+            read: false,      // Not read until opened
+            readBy: {}        // Track who read it
+        });
+    } catch (err) {
+        console.error("Failed to send:", err);
+        alert("Failed to send message. Check your connection.");
+        messageInput.value = text; // Restore message on error
+    } finally {
+        button.disabled = false;
+    }
+});
+
+// Global delete function attached to window so inline onclick works
+window.deleteMsg = async (key) => {
+    if(confirm("Delete this message?")) {
+        await remove(ref(db, `messages/${currentRoom}/${key}`));
+    }
+};
+
+// =====================================================================
+// 4. EXTRA FEATURES (Typing Simulation & Streaks)
+// =====================================================================
+let typingTimeout;
+messageInput.addEventListener('input', () => {
+    // In a full app, this writes to Firebase. For UI simulation:
+    typingIndicator.classList.remove('hidden');
+    clearTimeout(typingTimeout);
+    typingTimeout = setTimeout(() => {
+        typingIndicator.classList.add('hidden');
+    }, 1500);
+});
+
+function updateStreak() {
+    const lastDate = localStorage.getItem('og_last_login');
+    const today = new Date().toDateString();
+    let streak = parseInt(localStorage.getItem('og_streak')) || 0;
+
+    if (lastDate !== today) {
+        streak++;
+        localStorage.setItem('og_last_login', today);
+        localStorage.setItem('og_streak', streak);
+    }
+    document.getElementById('streak-counter').innerHTML = `<i data-lucide="flame" class="w-3 h-3"></i> ${streak}`;
+    lucide.createIcons();
+}
+
+// =====================================================================
+// 4. MESSAGE SEARCH
+// =====================================================================
+searchToggleBtn.addEventListener('click', () => {
+    if (searchMessagesInput.classList.contains('hidden')) {
+        searchMessagesInput.classList.remove('hidden');
+        searchMessagesInput.focus();
+    } else {
+        searchMessagesInput.classList.add('hidden');
+        searchMessagesInput.value = '';
+        listenForMessages(); // Reset to show all messages
+    }
+});
+
+searchMessagesInput.addEventListener('input', (e) => {
+    const query = e.target.value.toLowerCase().trim();
+    
+    if (!query) {
+        // Show all messages if search is empty
+        chatMessages.innerHTML = '';
+        messagesData.forEach((data, idx) => {
+            const keys = Object.keys(messagesData);
+            renderMessage(data, keys[idx] || idx);
+        });
+        return;
+    }
+    
+    // Filter messages by search query
+    chatMessages.innerHTML = '';
+    let foundCount = 0;
+    
+    messagesData.forEach((data, idx) => {
+        if (data.text.toLowerCase().includes(query) || data.user.toLowerCase().includes(query)) {
+            renderMessage(data, idx);
+            foundCount++;
+        }
+    });
+    
+    if (foundCount === 0) {
+        chatMessages.innerHTML = '<div class="text-zinc-500 text-center py-8">No messages found</div>';
+    }
+});
+
+// =====================================================================
+// 5. MESSAGE READ RECEIPTS
+// =====================================================================
+function setupReadReceipts() {
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting && !entry.target.dataset.marked) {
+                const messageKey = entry.target.dataset.msgKey;
+                if (messageKey && currentUsername) {
+                    // Mark message as read
+                    const readPath = ref(db, `messages/${currentRoom}/${messageKey}/readBy/${currentUsername}`);
+                    set(readPath, {
+                        username: currentUsername,
+                        readAt: serverTimestamp()
+                    }).catch(e => console.log("Failed to mark read:", e));
+                    entry.target.dataset.marked = 'true';
+                }
+            }
+        });
+    }, { threshold: 0.5 });
+    
+    return observer;
+}
+
+let readReceiptObserver = null;
+
+// =====================================================================
+// 6. Z-SCANNER AI FEATURE
+// =====================================================================
+const scannerModal = document.getElementById('scanner-modal');
+
+document.getElementById('z-scanner-btn').addEventListener('click', () => {
+    scannerModal.classList.remove('hidden');
+    
+    // 1. Find Most Active User
+    const userCounts = {};
+    let topUser = "None";
+    let maxMsgs = 0;
+    
+    // 2. Find Highlights
+    const highlightsDiv = document.getElementById('scan-highlights');
+    highlightsDiv.innerHTML = '';
+    const keywords = ['urgent', 'exam', 'important'];
+    let foundHighlights = false;
+
+    messagesData.forEach(msg => {
+        // Count users
+        userCounts[msg.user] = (userCounts[msg.user] || 0) + 1;
+        if (userCounts[msg.user] > maxMsgs) {
+            maxMsgs = userCounts[msg.user];
+            topUser = msg.user;
+        }
+
+        // Check keywords
+        const lowerText = msg.text.toLowerCase();
+        if (keywords.some(word => lowerText.includes(word))) {
+            foundHighlights = true;
+            highlightsDiv.innerHTML += `<div class="p-2 bg-red-500/10 border border-red-500/20 rounded mb-1"><span class="text-xs text-red-400 font-bold">@${msg.user}:</span> ${msg.text}</div>`;
+        }
+    });
+
+    if (!foundHighlights) highlightsDiv.innerHTML = "No critical keywords detected in current timeline.";
+    document.getElementById('scan-active-user').innerText = `@${topUser} (${maxMsgs} msgs)`;
+
+    // 3. Summarize Last 10
+    const last10 = messagesData.slice(-10);
+    const summaryText = last10.map(m => m.text).join(' ').substring(0, 100) + "...";
+    document.getElementById('scan-summary').innerText = last10.length > 0 
+        ? `Conversation is focused on: "${summaryText}"` 
+        : "Not enough data to summarize.";
+});
+
+document.getElementById('close-scanner').addEventListener('click', () => {
+    scannerModal.classList.add('hidden');
+});
+
+// =====================================================================
+// 7. MINI GAMES FEATURE
+// =====================================================================
+
+// Game state
+let tictactoeGame = ['', '', '', '', '', '', '', '', ''];
+let currentPlayer = 'X';
+let gameActive = true;
+let quizQuestions = [];
+let currentQuestionIndex = 0;
+let quizScore = 0;
+let quizTotal = 0;
+
+// Sample quiz questions
+const sampleQuizQuestions = [
+    {
+        question: "What does 'AI' stand for?",
+        options: ["Artificial Intelligence", "Automated Interface", "Advanced Integration", "Active Internet"],
+        correct: 0
+    },
+    {
+        question: "Which programming language is known for web development?",
+        options: ["Python", "JavaScript", "C++", "Java"],
+        correct: 1
+    },
+    {
+        question: "What is the capital of France?",
+        options: ["London", "Berlin", "Paris", "Madrid"],
+        correct: 2
+    },
+    {
+        question: "Which planet is known as the Red Planet?",
+        options: ["Venus", "Mars", "Jupiter", "Saturn"],
+        correct: 1
+    },
+    {
+        question: "What does 'HTTP' stand for?",
+        options: ["HyperText Transfer Protocol", "High Tech Transfer Protocol", "Home Transfer Text Protocol", "Hyper Transfer Text Protocol"],
+        correct: 0
+    }
+];
+
+// Modal event listeners
+gamesBtn.addEventListener('click', () => {
+    gamesModal.classList.remove('hidden');
+    loadGameStats();
+});
+
+closeGamesModal.addEventListener('click', () => {
+    gamesModal.classList.add('hidden');
+});
+
+// Tic Tac Toe functions
+function initializeTictactoe() {
+    tictactoeGame = ['', '', '', '', '', '', '', '', ''];
+    currentPlayer = 'X';
+    gameActive = true;
+    tictactoeStatus.textContent = "Your turn (X)";
+    
+    const cells = tictactoeBoard.querySelectorAll('div');
+    cells.forEach(cell => {
+        cell.textContent = '';
+        cell.classList.remove('text-cyan-400', 'text-orange-400');
+        cell.removeEventListener('click', handleCellClick); // Remove existing listener
+        cell.addEventListener('click', handleCellClick);
+    });
+}
+
+function handleCellClick(event) {
+    const cellIndex = parseInt(event.target.dataset.cell);
+    
+    if (tictactoeGame[cellIndex] !== '' || !gameActive) {
+        return;
+    }
+    
+    tictactoeGame[cellIndex] = currentPlayer;
+    event.target.textContent = currentPlayer;
+    event.target.classList.add(currentPlayer === 'X' ? 'text-cyan-400' : 'text-orange-400');
+    
+    if (checkWinner()) {
+        tictactoeStatus.textContent = `Player ${currentPlayer} wins! 🎉`;
+        gameActive = false;
+        updateTictactoeWins();
+        return;
+    }
+    
+    if (tictactoeGame.every(cell => cell !== '')) {
+        tictactoeStatus.textContent = "It's a draw! 🤝";
+        gameActive = false;
+        return;
+    }
+    
+    currentPlayer = currentPlayer === 'X' ? 'O' : 'X';
+    tictactoeStatus.textContent = `Player ${currentPlayer}'s turn`;
+}
+
+function checkWinner() {
+    const winPatterns = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8], // Rows
+        [0, 3, 6], [1, 4, 7], [2, 5, 8], // Columns
+        [0, 4, 8], [2, 4, 6] // Diagonals
+    ];
+    
+    return winPatterns.some(pattern => {
+        const [a, b, c] = pattern;
+        return tictactoeGame[a] && tictactoeGame[a] === tictactoeGame[b] && tictactoeGame[a] === tictactoeGame[c];
+    });
+}
+
+function updateTictactoeWins() {
+    if (!currentUsername) return;
+    
+    const wins = parseInt(localStorage.getItem(`tictactoe_wins_${currentUsername}`) || '0') + 1;
+    localStorage.setItem(`tictactoe_wins_${currentUsername}`, wins);
+    tictactoeWins.textContent = wins;
+}
+
+// Quiz functions
+function startNewQuiz() {
+    quizQuestions = [...sampleQuizQuestions].sort(() => Math.random() - 0.5);
+    currentQuestionIndex = 0;
+    quizScore = 0;
+    quizTotal = quizQuestions.length;
+
+    if (!quizOptions || !quizQuestion || !quizStatus || !startQuiz || !nextQuestion) {
+        console.error('Quiz elements not found in DOM');
+        return;
+    }
+
+    if (quizTotal === 0) {
+        quizQuestion.textContent = 'No quiz questions available.';
+        return;
+    }
+
+    quizStatus.textContent = `Question 1/${quizTotal}`;
+    nextQuestion.classList.add('hidden');
+    startQuiz.classList.add('hidden');
+    quizOptions.classList.remove('hidden');
+    showQuestion();
+}
+
+function showQuestion() {
+    if (currentQuestionIndex >= quizQuestions.length) {
+        endQuiz();
+        return;
+    }
+
+    const question = quizQuestions[currentQuestionIndex];
+    if (!question || !question.options) {
+        endQuiz();
+        return;
+    }
+
+    quizQuestion.textContent = question.question;
+
+    const optionButtons = quizOptions.querySelectorAll('.quiz-option');
+    optionButtons.forEach((btn, index) => {
+        btn.textContent = question.options[index] || '';
+        btn.classList.remove('bg-green-500/20', 'bg-red-500/20', 'border-green-500', 'border-red-500');
+        btn.style.pointerEvents = 'auto';
+        btn.onclick = () => selectAnswer(index);
+    });
+}
+
+function selectAnswer(selectedIndex) {
+    if (currentQuestionIndex >= quizQuestions.length) {
+        return;
+    }
+
+    const question = quizQuestions[currentQuestionIndex];
+    if (!question) {
+        return;
+    }
+
+    const optionButtons = quizOptions.querySelectorAll('.quiz-option');
+
+    optionButtons.forEach(btn => {
+        btn.style.pointerEvents = 'none';
+    });
+
+    if (selectedIndex === question.correct) {
+        quizScore++;
+        if (optionButtons[selectedIndex]) {
+            optionButtons[selectedIndex].classList.add('bg-green-500/20', 'border-green-500');
+        }
+    } else {
+        if (optionButtons[selectedIndex]) {
+            optionButtons[selectedIndex].classList.add('bg-red-500/20', 'border-red-500');
+        }
+        if (optionButtons[question.correct]) {
+            optionButtons[question.correct].classList.add('bg-green-500/20', 'border-green-500');
+        }
+    }
+
+    nextQuestion.classList.remove('hidden');
+}
+
+function nextQuizQuestion() {
+    currentQuestionIndex++;
+
+    if (currentQuestionIndex < quizQuestions.length) {
+        quizStatus.textContent = `Question ${currentQuestionIndex + 1}/${quizTotal}`;
+    }
+
+    nextQuestion.classList.add('hidden');
+    showQuestion();
+}
+
+function endQuiz() {
+    quizQuestion.textContent = `Quiz Complete! You scored ${quizScore}/${quizTotal} 🎉`;
+    quizStatus.textContent = `Final Score: ${quizScore}/${quizTotal}`;
+    quizOptions.classList.add('hidden');
+    startQuiz.classList.remove('hidden');
+    nextQuestion.classList.add('hidden');
+
+    const currentHighScore = parseInt(localStorage.getItem(`quiz_highscore_${currentUsername}`) || '0');
+    if (quizScore > currentHighScore) {
+        localStorage.setItem(`quiz_highscore_${currentUsername}`, quizScore);
+        quizHighScore.textContent = quizScore;
+    }
+
+    loadGameStats();
+}
+
+function loadGameStats() {
+    if (!currentUsername) return;
+    
+    const tictactoeWinsCount = localStorage.getItem(`tictactoe_wins_${currentUsername}`) || '0';
+    const quizHighScoreCount = localStorage.getItem(`quiz_highscore_${currentUsername}`) || '0';
+    
+    tictactoeWins.textContent = tictactoeWinsCount;
+    quizHighScore.textContent = quizHighScoreCount;
+}
+
+function resetGameStats() {
+    if (!currentUsername) return;
+    
+    localStorage.removeItem(`tictactoe_wins_${currentUsername}`);
+    localStorage.removeItem(`quiz_highscore_${currentUsername}`);
+    tictactoeWins.textContent = '0';
+    quizHighScore.textContent = '0';
+}
+
+// Event listeners for games
+resetTictactoe.addEventListener('click', initializeTictactoe);
+startQuiz.addEventListener('click', startNewQuiz);
+nextQuestion.addEventListener('click', nextQuizQuestion);
+resetStats.addEventListener('click', resetGameStats);
+
+// Initialize Tic Tac Toe on load
+initializeTictactoe();

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Z Chat | Premium</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="theme-neon">
+    <audio id="notify-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+    <div id="toast-container"></div>
+
+    <div id="auth-screen" class="auth-screen active">
+        <div class="auth-card">
+            <h1 class="auth-title">Z CHAT</h1>
+            <p class="auth-subtitle" id="auth-mode-text">Access Secure Node</p>
+            
+            <form id="auth-form">
+                <input type="text" id="auth-username" placeholder="Username (Sign Up Only)" class="auth-input hidden" minlength="3" maxlength="20">
+                <input type="email" id="auth-email" placeholder="Email Address" class="auth-input" required>
+                <input type="password" id="auth-password" placeholder="Password" class="auth-input" required minlength="6">
+                <button type="submit" id="auth-submit-btn" class="auth-button">Initialize Uplink</button>
+            </form>
+            
+            <div class="auth-toggle">
+                <span id="toggle-auth-mode">Need an account? Sign Up</span>
+            </div>
+            <div class="auth-divider"><span>OR</span></div>
+            <button id="google-login-btn" class="auth-button google-btn">Continue with Google</button>
+        </div>
+    </div>
+
+    <div id="call-overlay" class="hidden">
+        <div class="call-card">
+            <img id="call-avatar" src="https://via.placeholder.com/100" alt="Avatar">
+            <h2 id="call-name">Calling...</h2>
+            <p id="call-timer">00:00</p>
+            <button id="end-call-btn" class="hangup-btn"><i data-lucide="phone-off"></i></button>
+        </div>
+    </div>
+
+    <div id="app-screen" class="app-screen hidden">
+        <div class="container">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <div class="app-title">Z CHAT</div>
+                    <input type="text" class="search-bar" id="searchBar" placeholder="Search users or chats...">
+                </div>
+
+                <div class="sidebar-tabs">
+                    <button class="tab-btn active" id="tab-chats" data-tab="chats">Chats</button>
+                    <button class="tab-btn" id="tab-friends" data-tab="friends">Friends</button>
+                    <button class="tab-btn" id="tab-groups" data-tab="groups">Groups</button>
+                </div>
+
+                <div class="chat-list" id="sidebar-list">
+                    </div>
+
+                <div class="sidebar-footer">
+                    <button id="settings-btn" class="feature-btn" title="Settings"><i data-lucide="settings"></i></button>
+                    <button id="create-group-btn" class="feature-btn" title="New Group"><i data-lucide="users"></i></button>
+                    <button id="z-scanner-btn" class="feature-btn" title="Z-Scanner"><i data-lucide="scan-line"></i></button>
+                    <button id="logout-btn" class="feature-btn logout" title="Logout"><i data-lucide="log-out"></i></button>
+                </div>
+            </aside>
+
+            <main class="chat-container">
+                <header class="chat-header">
+                    <div class="header-info">
+                        <img class="chat-avatar" id="header-avatar" src="https://via.placeholder.com/40" alt="Avatar">
+                        <div>
+                            <div class="header-name" id="header-name">Select a chat</div>
+                            <div class="header-status">
+                                <span class="status-dot" id="status-dot"></span>
+                                <span id="header-status-text">System Ready</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <button id="call-btn" class="header-btn hidden" title="Call"><i data-lucide="phone"></i></button>
+                    </div>
+                </header>
+
+                <div class="messages-area" id="messages-area">
+                    <div class="empty-state">
+                        <i data-lucide="message-square" class="empty-state-icon"></i>
+                        <p>Select a chat to start messaging</p>
+                    </div>
+                </div>
+
+                <div id="typing-indicator" class="typing-indicator hidden">
+                    <span>Someone is typing</span>
+                    <div class="dot-animate"></div><div class="dot-animate"></div><div class="dot-animate"></div>
+                </div>
+
+                <div id="image-preview-container" class="hidden">
+                    <img id="image-preview-img" src="" alt="Preview">
+                    <button id="cancel-image-btn"><i data-lucide="x"></i></button>
+                </div>
+
+                <div class="input-area">
+                    <input type="file" id="image-upload-input" accept="image/*" class="hidden">
+                    <button class="icon-btn" id="attach-btn" title="Attach Image"><i data-lucide="image"></i></button>
+                    <div class="input-group">
+                        <textarea class="message-input" id="message-input" placeholder="Type a message..." rows="1"></textarea>
+                    </div>
+                    <button class="send-btn" id="send-btn" title="Send"><i data-lucide="send"></i></button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <div id="settings-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>User Settings</h2>
+                <button class="modal-close" onclick="document.getElementById('settings-modal').classList.add('hidden')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-group">
+                    <label>Profile Picture</label>
+                    <input type="file" id="dp-upload" accept="image/*" class="modal-input">
+                </div>
+                <div class="settings-group">
+                    <label>Username</label>
+                    <input type="text" id="settings-username" class="modal-input" placeholder="Update Username">
+                </div>
+                <div class="settings-group">
+                    <label>Status Update</label>
+                    <input type="text" id="settings-status" class="modal-input" placeholder="What's on your mind?">
+                </div>
+                <div class="settings-group">
+                    <label>Theme</label>
+                    <div class="theme-selector">
+                        <button class="theme-btn" data-theme="theme-neon">Neon</button>
+                        <button class="theme-btn" data-theme="theme-matrix">Matrix</button>
+                        <button class="theme-btn" data-theme="theme-cyberpink">Cyber Pink</button>
+                    </div>
+                </div>
+                <button id="save-settings-btn" class="modal-button primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="scanner-modal" class="modal hidden">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>Z-SCAN AI FACT CHECKER</h2>
+                <button class="modal-close" onclick="document.getElementById('scanner-modal').classList.add('hidden')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="scan-card">
+                    <span class="scan-label">Message to Check</span>
+                    <p id="scan-target-msg">Select a message in chat to scan.</p>
+                </div>
+                <button id="run-scan-btn" class="modal-button primary" style="width:100%; margin-bottom: 1rem;">Run Deep Scan via Wikipedia</button>
+                <div class="scan-card">
+                    <span class="scan-label">API Results</span>
+                    <div id="scan-results" class="scan-content">Awaiting input...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./script.js"></script>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

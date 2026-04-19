@@ -1,0 +1,21 @@
+{
+  "name": "Z-Chat",
+  "short_name": "Z-Chat",
+  "description": "Realtime messaging, voice calls, video calls, and screen sharing with Firebase signaling.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07111f",
+  "theme_color": "#07111f",
+  "categories": ["social", "communication"],
+  "lang": "en",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

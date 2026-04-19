@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <meta name="description" content="Z Chat - realtime messaging, voice calls, video calls, and screen sharing with Firebase signaling.">
+  <title>Z Chat</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script>
+    window.__ZCHAT_API_BASE__ = window.__ZCHAT_API_BASE__ || "";
+  </script>
+  <script>
+    (function () {
+      var isFileProtocol = location.protocol === "file:";
+
+      function onReady(callback) {
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", callback, { once: true });
+        } else {
+          callback();
+        }
+      }
+
+      function updateBootUi(message, progress, showError) {
+        var status = document.getElementById("boot-status");
+        var detail = document.getElementById("boot-detail");
+        var progressBar = document.getElementById("boot-progress");
+        var errorBanner = document.getElementById("error-banner");
+        var retryButton = document.getElementById("boot-retry-btn");
+        if (status) {
+          status.textContent = message;
+        }
+        if (detail) {
+          detail.textContent = showError ? "Retry startup after checking configuration and deployment." : "";
+          detail.classList.toggle("hidden", !showError);
+        }
+        if (progressBar && typeof progress === "number") {
+          progressBar.style.width = Math.max(0, Math.min(progress, 100)) + "%";
+        }
+        if (retryButton) {
+          retryButton.classList.toggle("hidden", !showError);
+          retryButton.onclick = function () { window.location.reload(); };
+        }
+        if (errorBanner) {
+          errorBanner.textContent = showError ? message : "";
+          errorBanner.classList.toggle("hidden", !showError);
+        }
+      }
+
+      if (isFileProtocol) {
+        onReady(function () {
+          updateBootUi(
+            "Z Chat cannot start from file://. Open it through http://localhost:3000, VS Code Live Server, or another local HTTP server.",
+            100,
+            true
+          );
+        });
+        return;
+      }
+
+      var manifest = document.createElement("link");
+      manifest.rel = "manifest";
+      manifest.href = "./manifest.json";
+      manifest.onerror = function () {
+        console.warn("[Z Chat] manifest.json could not be loaded. Continuing without PWA metadata.");
+      };
+      document.head.appendChild(manifest);
+
+      function injectModuleScript() {
+        if (document.querySelector('script[data-zchat-main="true"]')) {
+          return;
+        }
+        var moduleScript = document.createElement("script");
+        moduleScript.type = "module";
+        moduleScript.src = "./script.js";
+        moduleScript.dataset.zchatMain = "true";
+        moduleScript.onerror = function () {
+          updateBootUi(
+            "script.js could not be loaded. Check localhost/server hosting and file paths.",
+            100,
+            true
+          );
+          console.error("[Z Chat] Failed to load ./script.js");
+        };
+        (document.body || document.head || document.documentElement).appendChild(moduleScript);
+      }
+
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", injectModuleScript, { once: true });
+      } else {
+        injectModuleScript();
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-shell">
+    <div class="ambient ambient-one" aria-hidden="true"></div>
+    <div class="ambient ambient-two" aria-hidden="true"></div>
+
+    <div class="status-banner offline-banner hidden" id="offline-banner">
+      You are offline. Messaging and calling will resume when the connection returns.
+    </div>
+    <div class="status-banner error-banner hidden" id="error-banner"></div>
+    <div class="toast-stack" id="toast-stack" aria-live="polite" aria-atomic="true"></div>
+
+    <section class="splash-screen" id="splash-screen">
+      <div class="splash-card">
+        <div class="logo-mark">Z</div>
+        <p class="kicker">Realtime Communication</p>
+        <h1>Z Chat</h1>
+        <p class="splash-copy">
+          Secure chat, Firebase auth, and production-style WebRTC calling in one workspace.
+        </p>
+        <div class="progress-track"><span id="boot-progress"></span></div>
+        <p class="splash-status" id="boot-status">Starting up...</p>
+        <p class="splash-status hidden" id="boot-detail"></p>
+        <button class="button secondary hidden" id="boot-retry-btn" type="button">Retry startup</button>
+      </div>
+    </section>
+
+    <section class="onboarding-screen" id="onboarding-screen" hidden>
+      <div class="onboarding-shell">
+        <div class="onboarding-head">
+          <div>
+            <p class="kicker">Welcome to Z Chat</p>
+            <h2>One mobile workspace for your chats, calls, AI, and premium tools.</h2>
+          </div>
+          <button class="button secondary small" id="onboarding-skip-btn" type="button">Skip</button>
+        </div>
+
+        <div class="onboarding-stage" id="onboarding-stage">
+          <article class="onboarding-slide active" data-onboarding-slide="0">
+            <div class="onboarding-visual">
+              <div class="onboarding-orb">
+                <span>Chat</span>
+              </div>
+            </div>
+            <div class="onboarding-copy">
+              <h3>Real-time conversations that feel instant.</h3>
+              <p>Jump between direct messages, groups, and premium-quality chat tools with a cleaner mobile flow.</p>
+            </div>
+          </article>
+          <article class="onboarding-slide" data-onboarding-slide="1">
+            <div class="onboarding-visual">
+              <div class="onboarding-orb alt">
+                <span>AI</span>
+              </div>
+            </div>
+            <div class="onboarding-copy">
+              <h3>Smart help for coding, study, gaming, and scanning.</h3>
+              <p>Z AI, Z Scanner, and your daily tools now live in one connected space instead of feeling scattered.</p>
+            </div>
+          </article>
+          <article class="onboarding-slide" data-onboarding-slide="2">
+            <div class="onboarding-visual">
+              <div class="onboarding-orb accent">
+                <span>Call</span>
+              </div>
+            </div>
+            <div class="onboarding-copy">
+              <h3>Voice, video, rooms, and premium upgrades without friction.</h3>
+              <p>Everything is arranged for mobile first, with smoother navigation, clearer actions, and better control placement.</p>
+            </div>
+          </article>
+        </div>
+
+        <div class="onboarding-footer">
+          <div class="onboarding-dots" id="onboarding-dots" aria-label="Onboarding progress">
+            <span class="onboarding-dot active" data-onboarding-dot="0"></span>
+            <span class="onboarding-dot" data-onboarding-dot="1"></span>
+            <span class="onboarding-dot" data-onboarding-dot="2"></span>
+          </div>
+          <button class="button primary" id="onboarding-next-btn" type="button">Next</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="auth-screen" id="auth-screen" hidden>
+      <div class="auth-shell">
+        <div class="auth-brand">
+          <p class="kicker">Built for chat plus calls</p>
+          <h2>One stable app shell for desktop and mobile.</h2>
+          <ul class="auth-highlights">
+            <li>Firebase auth plus presence</li>
+            <li>Realtime chats and incoming call detection</li>
+            <li>Voice, video, and screen sharing with WebRTC</li>
+          </ul>
+          <div class="auth-stat-strip">
+            <div class="auth-stat-card">
+              <strong>Instant</strong>
+              <span>Chat sync</span>
+            </div>
+            <div class="auth-stat-card">
+              <strong>Mobile</strong>
+              <span>First layout</span>
+            </div>
+            <div class="auth-stat-card">
+              <strong>Secure</strong>
+              <span>Firebase auth</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="auth-panel">
+          <div class="auth-tabs">
+            <button class="auth-tab active" id="show-signin-btn" type="button">Sign In</button>
+            <button class="auth-tab" id="show-signup-btn" type="button">Create Account</button>
+          </div>
+
+          <form class="auth-form" id="signin-form">
+            <label class="field">
+              <span>Email</span>
+              <input id="signin-email" type="email" autocomplete="email" required placeholder="you@example.com">
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="signin-password" type="password" autocomplete="current-password" required placeholder="Enter password">
+            </label>
+            <div class="auth-actions">
+              <button class="button secondary" id="forgot-password-btn" type="button">Reset Password</button>
+              <button class="button primary" id="signin-submit-btn" type="submit">Login</button>
+            </div>
+            <button class="button google" id="google-signin-btn" type="button">Continue with Google</button>
+          </form>
+
+          <form class="auth-form hidden-auth" id="signup-form">
+            <label class="field">
+              <span>Display name</span>
+              <input id="signup-display-name" type="text" maxlength="50" required placeholder="Rahul Sharma">
+            </label>
+            <label class="field">
+              <span>Username</span>
+              <input id="signup-username" type="text" maxlength="20" required placeholder="rahul_sharma">
+              <small id="username-feedback">3-20 characters, letters, numbers, underscore.</small>
+            </label>
+            <label class="field">
+              <span>Email</span>
+              <input id="signup-email" type="email" autocomplete="email" required placeholder="you@example.com">
+            </label>
+            <label class="field">
+              <span>Phone number</span>
+              <input id="signup-phone" type="tel" inputmode="tel" maxlength="15" placeholder="+91 9876543210">
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <input id="signup-password" type="password" autocomplete="new-password" required minlength="8" placeholder="Minimum 8 characters">
+            </label>
+            <label class="field">
+              <span>Confirm password</span>
+              <input id="signup-confirm-password" type="password" autocomplete="new-password" required minlength="8" placeholder="Re-enter password">
+            </label>
+            <label class="field">
+              <span>Bio</span>
+              <textarea id="signup-bio" rows="3" maxlength="139" placeholder="Say something about yourself"></textarea>
+            </label>
+            <div class="field">
+              <span>Profile photo</span>
+              <div class="inline-row">
+                <div class="avatar" id="signup-photo-preview">Z</div>
+                <button class="button secondary small" id="select-signup-photo-btn" type="button">Choose Photo</button>
+                <input id="signup-photo-input" type="file" accept="image/*" hidden>
+              </div>
+            </div>
+            <label class="check-row">
+              <input id="legal-consent" type="checkbox" required>
+              <span>
+                I agree to the
+                <button class="inline-link" id="open-terms-link" type="button">Terms</button>
+                and
+                <button class="inline-link" id="open-privacy-link" type="button">Privacy Policy</button>.
+              </span>
+            </label>
+            <div class="auth-actions">
+              <button class="button primary" id="signup-submit-btn" type="submit">Create Account</button>
+            </div>
+            <button class="button google" id="google-signup-btn" type="button">Sign up with Google</button>
+          </form>
+
+          <p class="auth-feedback" id="auth-feedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="app-view" id="app-view" hidden>
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-head">
+          <div>
+            <p class="kicker">Z Chat</p>
+            <h2>Inbox</h2>
+          </div>
+          <button class="icon-button mobile-only" id="mobile-close-sidebar" type="button" aria-label="Close menu">X</button>
+        </div>
+
+        <button class="profile-summary" id="profile-button" type="button">
+          <div class="avatar" id="profile-avatar">Z</div>
+          <div class="profile-copy">
+            <strong id="profile-name">Loading...</strong>
+            <span id="profile-meta">offline</span>
+          </div>
+        </button>
+
+        <div class="sidebar-tools">
+          <input class="search-input" id="user-search" type="search" inputmode="search" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="Search usernames, people, or chats">
+          <div class="search-hint" id="user-search-hint">Search by username or display name.</div>
+          <div class="tool-row">
+            <button class="button secondary small" id="new-chat-btn" type="button">New Chat</button>
+            <button class="button secondary small" id="settings-btn" type="button">Settings</button>
+          </div>
+        </div>
+
+        <div class="list-shell">
+          <p class="list-label">Contacts</p>
+          <div class="conversation-list" id="contact-list"></div>
+        </div>
+
+        <div class="list-shell">
+          <p class="list-label">Recent Chats</p>
+          <div class="conversation-list" id="conversation-list"></div>
+        </div>
+
+        <div class="sidebar-foot">
+          <button class="button danger full" id="logout-btn" type="button">Logout</button>
+        </div>
+      </aside>
+
+      <div class="drawer-overlay mobile-only" id="drawer-overlay" hidden></div>
+
+      <main class="workspace">
+        <header class="workspace-topbar">
+          <button class="icon-button mobile-only topbar-utility-btn" id="mobile-open-sidebar" type="button" aria-label="Open menu">
+            <span aria-hidden="true">Menu</span>
+            <span class="sr-only">Open menu</span>
+          </button>
+          <div class="workspace-copy">
+            <p class="kicker" id="workspace-kicker">Conversation</p>
+            <h2 id="chat-title">Select a chat</h2>
+          </div>
+          <div class="workspace-actions">
+            <button class="icon-button mobile-only topbar-utility-btn" id="topbar-search-btn" type="button" title="Search people" aria-label="Search people">
+              <span aria-hidden="true">Search</span>
+              <span class="sr-only">Search people</span>
+            </button>
+            <button class="icon-button" id="refresh-devices-btn" type="button" title="Refresh devices">Refresh</button>
+            <button class="topbar-avatar mobile-only" id="topbar-profile-btn" type="button" aria-label="Open profile">
+              <div class="avatar" id="topbar-profile-avatar">Z</div>
+            </button>
+          </div>
+        </header>
+
+        <nav class="section-tabs" aria-label="Main sections">
+          <button class="section-tab active" id="nav-chats-btn" type="button">Chats</button>
+          <button class="section-tab" id="nav-friends-btn" type="button">Friends</button>
+          <button class="section-tab" id="nav-rooms-btn" type="button">Rooms</button>
+          <button class="section-tab" id="nav-ai-btn" type="button">Z AI</button>
+          <button class="section-tab" id="nav-games-btn" type="button">Games</button>
+          <button class="section-tab" id="nav-challenges-btn" type="button">Challenges</button>
+          <button class="section-tab" id="nav-premium-btn" type="button">Premium</button>
+          <button class="section-tab" id="nav-settings-btn" type="button">Settings</button>
+        </nav>
+
+        <section class="content-panel chat-panel" id="chat-panel">
+          <div class="empty-state" id="empty-state">
+            <div class="dashboard-stack">
+              <div class="dashboard-hero">
+                <div class="dashboard-copy">
+                  <p class="kicker">Mobile dashboard</p>
+                  <h3 id="dashboard-greeting">Your conversations start here.</h3>
+                  <p id="dashboard-subtitle">Search people, jump into groups, open AI, or continue your latest chats without dead space.</p>
+                </div>
+                <button class="button secondary small" id="dashboard-search-btn" type="button">Search People</button>
+              </div>
+
+              <div class="dashboard-stat-grid">
+                <article class="dashboard-stat-card">
+                  <strong id="dashboard-unread-count">0</strong>
+                  <span>Unread chats</span>
+                </article>
+                <article class="dashboard-stat-card">
+                  <strong id="dashboard-friends-count">0</strong>
+                  <span>Friends</span>
+                </article>
+                <article class="dashboard-stat-card">
+                  <strong id="dashboard-plan-value">FREE</strong>
+                  <span>Current plan</span>
+                </article>
+                <article class="dashboard-stat-card">
+                  <strong id="dashboard-challenge-value">0</strong>
+                  <span>Streak</span>
+                </article>
+              </div>
+
+              <div class="dashboard-quick-grid">
+                <button class="quick-action-card" id="quick-action-new-chat" type="button">
+                  <span class="quick-action-icon">+</span>
+                  <strong>New chat</strong>
+                  <small>Find people and start fast.</small>
+                </button>
+                <button class="quick-action-card" id="quick-action-rooms" type="button">
+                  <span class="quick-action-icon">#</span>
+                  <strong>Groups</strong>
+                  <small>Jump into your rooms.</small>
+                </button>
+                <button class="quick-action-card" id="quick-action-ai" type="button">
+                  <span class="quick-action-icon">AI</span>
+                  <strong>Z AI</strong>
+                  <small>Open scanner and bots.</small>
+                </button>
+                <button class="quick-action-card" id="quick-action-premium" type="button">
+                  <span class="quick-action-icon">&#8377;</span>
+                  <strong>Premium</strong>
+                  <small>Compare plans and benefits.</small>
+                </button>
+              </div>
+
+              <div class="dashboard-section-head">
+                <div>
+                  <p class="kicker">Continue</p>
+                  <h4>Recent chats</h4>
+                </div>
+                <button class="button secondary small" id="dashboard-open-latest-btn" type="button">Open Latest</button>
+              </div>
+              <div class="empty-state-list" id="empty-state-list"></div>
+            </div>
+          </div>
+
+          <div class="chat-shell hidden" id="chat-shell">
+            <header class="chat-header">
+              <div class="chat-peer">
+                <div class="avatar" id="chat-peer-avatar">U</div>
+                <div>
+                  <h3 id="chat-peer-name">Unknown</h3>
+                  <p id="chat-peer-status">Offline</p>
+                </div>
+              </div>
+              <div class="chat-actions">
+                <button class="icon-button" id="voice-call-btn" type="button" title="Voice call">Call</button>
+                <button class="icon-button" id="video-call-btn" type="button" title="Video call">Video</button>
+              </div>
+            </header>
+
+            <div class="message-feed" id="message-feed" aria-live="polite"></div>
+            <div class="typing-indicator hidden" id="typing-indicator">Someone is typing...</div>
+
+            <form class="composer" id="composer-form">
+              <div class="reply-bar hidden" id="reply-bar">
+                <div class="reply-copy" id="reply-preview-text">Replying...</div>
+                <button class="button secondary small" id="cancel-reply-btn" type="button">Cancel</button>
+              </div>
+              <div class="attachment-preview hidden" id="attachment-preview-bar">
+                <div class="attachment-preview-copy" id="attachment-preview-text">Attachment ready to send</div>
+                <button class="button secondary small" id="clear-attachment-btn" type="button">Clear</button>
+              </div>
+              <div class="sticker-suggestions hidden" id="sticker-suggestions"></div>
+              <div class="voice-recording-bar hidden" id="voice-recording-bar">
+                <div class="voice-recording-copy">
+                  <strong id="voice-recording-status">Hold to record</strong>
+                  <span>Slide left to cancel</span>
+                </div>
+                <div class="voice-recording-progress"><span id="voice-recording-meter"></span></div>
+              </div>
+              <div class="composer-shell">
+                <div class="composer-leading">
+                  <button class="icon-button" id="attach-image-btn" type="button" title="Open attachments">+</button>
+                  <button class="icon-button" id="emoji-btn" type="button" title="Open stickers and emoji">:)</button>
+                </div>
+                <textarea id="message-input" rows="1" maxlength="5000" placeholder="Type a message"></textarea>
+                <div class="composer-actions">
+                  <button class="icon-button hidden" id="mic-message-btn" type="button" title="Hold to record voice note">Mic</button>
+                  <button class="button primary" id="send-message-btn" type="submit">Send</button>
+                </div>
+              </div>
+              <input id="image-upload-input" type="file" accept="image/*,video/*" hidden>
+              <input id="camera-upload-input" type="file" accept="image/*" capture="environment" hidden>
+              <input id="audio-upload-input" type="file" accept="audio/*" hidden>
+              <input id="document-upload-input" type="file" hidden>
+            </form>
+            <div class="attachment-sheet hidden" id="attachment-sheet" aria-label="Attachment options">
+              <div class="attachment-sheet-head">
+                <p class="kicker">Attachments</p>
+                <button class="icon-button" id="close-attachment-sheet-btn" type="button" title="Close attachment menu">Close</button>
+              </div>
+              <div class="attachment-grid">
+                <button class="attachment-action" id="attach-photo-video-btn" type="button"><span>Photo</span><strong>Photos &amp; Videos</strong></button>
+                <button class="attachment-action" id="attach-camera-btn" type="button"><span>Cam</span><strong>Camera</strong></button>
+                <button class="attachment-action" id="attach-document-btn" type="button"><span>Doc</span><strong>Document</strong></button>
+                <button class="attachment-action" id="attach-audio-btn" type="button"><span>Audio</span><strong>Audio</strong></button>
+                <button class="attachment-action" id="attach-contact-btn" type="button"><span>Card</span><strong>Contact</strong></button>
+                <button class="attachment-action" id="attach-poll-btn" type="button"><span>Poll</span><strong>Poll</strong></button>
+                <button class="attachment-action" id="attach-event-btn" type="button"><span>Event</span><strong>Event</strong></button>
+                <button class="attachment-action" id="attach-sticker-btn" type="button"><span>FX</span><strong>Stickers</strong></button>
+              </div>
+            </div>
+            <div class="sticker-sheet hidden" id="sticker-sheet" aria-label="Sticker picker">
+              <div class="attachment-sheet-head">
+                <div>
+                  <p class="kicker">Smart Stickers</p>
+                  <h4>Pick a vibe</h4>
+                </div>
+                <button class="icon-button" id="close-sticker-sheet-btn" type="button" title="Close sticker picker">Close</button>
+              </div>
+              <div class="sticker-categories" id="sticker-categories"></div>
+              <div class="sticker-recents hidden" id="sticker-recents-wrap">
+                <p class="list-label">Recent</p>
+                <div class="sticker-pack" id="sticker-recents"></div>
+              </div>
+              <div class="sticker-pack-grid" id="sticker-pack-grid"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="content-panel hidden" id="friends-panel">
+          <div class="panel-grid">
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Friend Requests</p>
+                  <h3>Incoming</h3>
+                </div>
+              </div>
+              <div class="stack-list" id="friend-requests-list"></div>
+            </article>
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Friends</p>
+                  <h3>Your network</h3>
+                </div>
+              </div>
+              <div class="stack-list" id="friends-list-view"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-panel hidden" id="rooms-panel">
+          <div class="panel-grid rooms-grid">
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Group Spaces</p>
+                  <h3>Gaming and study rooms</h3>
+                </div>
+                <button class="button primary small" id="create-room-btn" type="button">Create Room</button>
+              </div>
+              <div class="inline-row wrap">
+                <button class="button secondary small" id="create-group-room-btn" type="button">Group</button>
+                <button class="button secondary small" id="create-gaming-room-btn" type="button">Gaming</button>
+                <button class="button secondary small" id="create-study-room-btn" type="button">Study</button>
+              </div>
+              <div class="stack-list" id="rooms-list"></div>
+            </article>
+            <article class="feature-card room-chat-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Room Chat</p>
+                  <h3 id="room-title">Select a room</h3>
+                </div>
+                <div class="stack-item-actions hidden" id="room-actions">
+                  <button class="button secondary small" id="rename-room-btn" type="button">Rename</button>
+                  <button class="button secondary small" id="remove-room-member-btn" type="button">Remove Member</button>
+                </div>
+              </div>
+              <div class="room-meta hidden" id="room-meta"></div>
+              <div class="stack-list hidden" id="room-members-list"></div>
+              <div class="room-feed" id="room-feed"></div>
+              <form class="composer hidden" id="room-composer-form">
+                <textarea id="room-message-input" rows="1" maxlength="5000" placeholder="Message the room"></textarea>
+                <div class="composer-actions">
+                  <button class="button secondary" id="add-room-member-btn" type="button">Add Member</button>
+                  <button class="button primary" id="room-send-btn" type="submit">Send</button>
+                </div>
+              </form>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-panel hidden" id="ai-panel">
+          <div class="panel-grid ai-grid">
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Z Scanner</p>
+                  <h3>Check a claim</h3>
+                </div>
+              </div>
+              <label class="field">
+                <span>Message or claim</span>
+                <textarea id="scanner-input" rows="4" placeholder="Paste a claim to verify using public sources"></textarea>
+              </label>
+              <div class="inline-row">
+                <button class="button primary" id="scanner-run-btn" type="button">Scan Now</button>
+              </div>
+              <div class="scanner-results" id="scanner-results"></div>
+            </article>
+            <article class="feature-card ai-chat-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Z AI Bots</p>
+                  <h3 id="ai-bot-title">Coding AI</h3>
+                </div>
+              </div>
+              <div class="inline-row wrap bot-picker" id="ai-bot-list">
+                <button class="button secondary small ai-bot-btn active" data-bot="coding" type="button">Coding</button>
+                <button class="button secondary small ai-bot-btn" data-bot="gaming" type="button">Gaming</button>
+                <button class="button secondary small ai-bot-btn" data-bot="study" type="button">Study</button>
+                <button class="button secondary small ai-bot-btn" data-bot="assistant" type="button">Assistant</button>
+              </div>
+              <div class="room-feed ai-feed" id="ai-chat-feed"></div>
+              <form class="composer" id="ai-composer-form">
+                <textarea id="ai-prompt-input" rows="2" maxlength="4000" placeholder="Ask Z AI something helpful"></textarea>
+                <div class="composer-actions">
+                  <button class="button primary" id="ai-send-btn" type="submit">Send</button>
+                </div>
+              </form>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-panel hidden" id="games-panel">
+          <div class="panel-grid games-grid">
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Mini Games</p>
+                  <h3>Tic Tac Toe</h3>
+                </div>
+                <button class="button secondary small" id="reset-tic-btn" type="button">Reset</button>
+              </div>
+              <div class="tic-board" id="tic-board">
+                <button class="tic-cell" data-cell="0" type="button"></button>
+                <button class="tic-cell" data-cell="1" type="button"></button>
+                <button class="tic-cell" data-cell="2" type="button"></button>
+                <button class="tic-cell" data-cell="3" type="button"></button>
+                <button class="tic-cell" data-cell="4" type="button"></button>
+                <button class="tic-cell" data-cell="5" type="button"></button>
+                <button class="tic-cell" data-cell="6" type="button"></button>
+                <button class="tic-cell" data-cell="7" type="button"></button>
+                <button class="tic-cell" data-cell="8" type="button"></button>
+              </div>
+              <p class="helper-copy" id="tic-status">Your turn.</p>
+            </article>
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Quick Match</p>
+                  <h3>Rock Paper Scissors</h3>
+                </div>
+              </div>
+              <div class="inline-row wrap">
+                <button class="button secondary small rps-btn" data-move="rock" type="button">Rock</button>
+                <button class="button secondary small rps-btn" data-move="paper" type="button">Paper</button>
+                <button class="button secondary small rps-btn" data-move="scissors" type="button">Scissors</button>
+              </div>
+              <div class="rps-result" id="rps-result">Choose a move to play.</div>
+            </article>
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Quick Quiz</p>
+                  <h3>Brain Boost</h3>
+                </div>
+                <button class="button secondary small" id="next-quiz-btn" type="button">Next</button>
+              </div>
+              <div class="quiz-card">
+                <h4 id="quiz-question">Loading question...</h4>
+                <div class="stack-list" id="quiz-options"></div>
+                <p class="helper-copy" id="quiz-feedback"></p>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-panel hidden" id="challenges-panel">
+          <div class="panel-grid">
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Daily Progress</p>
+                  <h3>Challenge streak</h3>
+                </div>
+              </div>
+              <div class="stats-row">
+                <div class="stat-card">
+                  <strong id="streak-value">0</strong>
+                  <span>Day streak</span>
+                </div>
+                <div class="stat-card">
+                  <strong id="challenge-points-value">0</strong>
+                  <span>Total points</span>
+                </div>
+              </div>
+              <div class="badge-row" id="reward-badge-list"></div>
+            </article>
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Today</p>
+                  <h3>Daily challenges</h3>
+                </div>
+                <button class="button secondary small" id="refresh-challenges-btn" type="button">Refresh</button>
+              </div>
+              <div class="stack-list" id="challenge-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-panel hidden" id="premium-panel">
+          <div class="panel-grid premium-grid">
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Plan Status</p>
+                  <h3 id="plan-status-title">Free Plan</h3>
+                </div>
+              </div>
+              <div class="stats-row">
+                <div class="stat-card">
+                  <strong id="plan-badge">FREE</strong>
+                  <span>Current tier</span>
+                </div>
+                <div class="stat-card">
+                  <strong id="ai-usage-value">0 / 5</strong>
+                  <span>AI usage today</span>
+                </div>
+              </div>
+              <ul class="feature-lock-list" id="locked-feature-list"></ul>
+            </article>
+            <article class="feature-card pricing-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Upgrade</p>
+                  <h3>Choose your plan</h3>
+                </div>
+              </div>
+              <div class="stack-item info-card">
+                <strong>Plans stay communication-friendly</strong>
+                <span>Messaging and voice chat stay open for everyone. Moderate unlocks video and richer media, while Premium adds screen share, gaming rooms, and the highest limits.</span>
+              </div>
+              <div class="pricing-grid">
+                <div class="price-option">
+                  <p class="plan-tag">Free</p>
+                  <h4>&#8377;0</h4>
+                  <p>Messaging and voice chat, plus up to 2 group or study rooms.</p>
+                </div>
+                <div class="price-option">
+                  <p class="plan-tag">Moderate</p>
+                  <h4>&#8377;49</h4>
+                  <p>Video calling, richer media uploads, more AI usage, and bigger room capacity.</p>
+                  <button class="button primary full" id="buy-moderate-btn" type="button">Upgrade to Moderate</button>
+                </div>
+                <div class="price-option featured premium">
+                  <span class="plan-spotlight">Most popular</span>
+                  <p class="plan-tag">Premium</p>
+                  <h4>&#8377;99</h4>
+                  <p>Screen sharing, gaming rooms, premium AI limits, and the fullest Z Chat experience.</p>
+                  <button class="button primary full" id="buy-premium-btn" type="button">Upgrade to Premium</button>
+                </div>
+              </div>
+            </article>
+            <article class="feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Payments</p>
+                  <h3>History</h3>
+                </div>
+                <button class="button secondary small" id="refresh-payments-btn" type="button">Reload</button>
+              </div>
+              <div class="stack-item info-card payment-support-card">
+                <strong>Direct UPI QR</strong>
+                <span>Use this QR or UPI ID if you want a direct transfer. Manual UPI does not auto-activate plans. Instant plan unlocks still require verified Razorpay checkout.</span>
+                <div class="upi-qr-frame">
+                  <img id="payment-qr-preview" class="upi-qr-image" src="./assets/images/payment-qr.jpeg" alt="Direct UPI QR for Denzil pinto">
+                </div>
+                <div class="upi-id-row">
+                  <code id="upi-id-value">denzil.o3iginals@fam</code>
+                  <button class="button secondary small" id="copy-upi-btn" type="button">Copy UPI ID</button>
+                  <button class="button secondary small" id="open-upi-btn" type="button">Open UPI App</button>
+                </div>
+              </div>
+              <div class="stack-list" id="payment-history-list"></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="content-panel hidden" id="settings-panel">
+          <div class="panel-grid settings-panel-grid">
+            <article class="feature-card settings-feature-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Profile</p>
+                  <h3>Your account</h3>
+                </div>
+                <button class="button secondary small" id="settings-panel-open-btn" type="button">Edit</button>
+              </div>
+              <div class="settings-panel-profile">
+                <div class="avatar xl" id="settings-panel-avatar">Z</div>
+                <div class="settings-panel-copy">
+                  <strong id="settings-panel-name">Z Chat User</strong>
+                  <span id="settings-panel-username">@zchat</span>
+                  <p id="settings-panel-status">Your status will appear here.</p>
+                </div>
+              </div>
+              <div class="settings-panel-plan">
+                <span class="plan-pill" id="settings-panel-plan">FREE</span>
+                <span>Theme, privacy, devices, and billing shortcuts in one place.</span>
+              </div>
+            </article>
+
+            <article class="feature-card settings-links-card">
+              <div class="panel-head">
+                <div>
+                  <p class="kicker">Shortcuts</p>
+                  <h3>Manage your workspace</h3>
+                </div>
+              </div>
+              <div class="stack-list settings-shortcuts">
+                <button class="stack-item settings-shortcut" id="settings-account-shortcut" type="button">
+                  <strong>Account and profile</strong>
+                  <span>Update your display name, username, photo, and bio.</span>
+                </button>
+                <button class="stack-item settings-shortcut" id="settings-devices-shortcut" type="button">
+                  <strong>Call devices</strong>
+                  <span>Refresh microphones, cameras, and audio output safely.</span>
+                </button>
+                <button class="stack-item settings-shortcut" id="settings-privacy-shortcut" type="button">
+                  <strong>Privacy controls</strong>
+                  <span>Last seen, online visibility, and read receipts.</span>
+                </button>
+                <button class="stack-item settings-shortcut" id="settings-premium-shortcut" type="button">
+                  <strong>Premium and billing</strong>
+                  <span>Review your active plan and open upgrade options.</span>
+                </button>
+                <button class="stack-item settings-shortcut" id="settings-help-shortcut" type="button">
+                  <strong>Help and legal</strong>
+                  <span>Open Z Chat terms and privacy details.</span>
+                </button>
+              </div>
+              <button class="button danger full" id="settings-logout-btn" type="button">Logout</button>
+            </article>
+          </div>
+        </section>
+      </main>
+    </section>
+
+    <div class="incoming-overlay hidden" id="incoming-overlay">
+      <div class="incoming-card">
+        <p class="kicker">Incoming call</p>
+        <div class="avatar xl" id="incoming-avatar">U</div>
+        <h3 id="incoming-name">Unknown</h3>
+        <p id="incoming-type">Voice call</p>
+        <div class="incoming-actions">
+          <button class="button danger" id="reject-call-btn" type="button">Reject</button>
+          <button class="button primary" id="accept-call-btn" type="button">Accept</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="call-stage hidden" id="call-stage">
+      <video autoplay playsinline id="remote-video" class="remote-video"></video>
+      <div class="call-fallback" id="call-fallback">
+        <div class="avatar xl" id="call-avatar">U</div>
+        <h3 id="call-peer-name">Unknown</h3>
+        <p id="call-status-text">Connecting...</p>
+      </div>
+      <div class="call-topbar">
+        <div>
+          <p class="kicker" id="call-kind-label">Voice Call</p>
+          <h3 id="call-title">Z Chat Call</h3>
+        </div>
+        <div class="call-meta">
+          <span class="call-chip" id="call-quality">Waiting</span>
+          <span class="call-chip" id="call-timer">00:00</span>
+        </div>
+      </div>
+      <div class="local-preview-wrap" id="local-preview-wrap">
+        <video autoplay muted playsinline id="local-video" class="local-video"></video>
+      </div>
+      <div class="screen-share-banner hidden" id="screen-share-banner">
+        <span>You are sharing your screen</span>
+        <button class="button secondary small" id="stop-sharing-btn" type="button">Stop Sharing</button>
+      </div>
+      <div class="call-controls">
+        <button class="icon-button" id="toggle-mic-btn" type="button" aria-label="Toggle microphone">Mic</button>
+        <button class="icon-button" id="toggle-camera-btn" type="button" aria-label="Toggle camera">Cam</button>
+        <button class="icon-button" id="flip-camera-btn" type="button" aria-label="Switch camera">Flip</button>
+        <button class="icon-button" id="share-screen-btn" type="button" aria-label="Share screen">Share</button>
+        <button class="icon-button danger-fill" id="end-call-btn" type="button" aria-label="End call">End</button>
+      </div>
+    </div>
+
+    <dialog class="settings-modal" id="settings-modal">
+      <form method="dialog" class="modal-card settings-card">
+        <div class="modal-head">
+          <div>
+            <p class="kicker">Preferences</p>
+            <h3>Devices and Privacy</h3>
+          </div>
+          <button class="icon-button" id="close-settings-btn" type="submit" aria-label="Close settings">X</button>
+        </div>
+
+        <div class="settings-grid">
+          <label class="field">
+            <span>Display name</span>
+            <input id="settings-display-name" type="text" maxlength="50" placeholder="Display name">
+          </label>
+          <label class="field">
+            <span>Username</span>
+            <input id="settings-username" type="text" maxlength="20" placeholder="username">
+          </label>
+          <label class="field">
+            <span>Bio / Status</span>
+            <textarea id="settings-bio" rows="3" maxlength="139" placeholder="Your status"></textarea>
+          </label>
+          <div class="field">
+            <span>Profile photo</span>
+            <div class="inline-row">
+              <div class="avatar" id="settings-photo-preview">Z</div>
+              <button class="button secondary small" id="change-photo-btn" type="button">Change Photo</button>
+              <input id="profile-photo-input" type="file" accept="image/*" hidden>
+            </div>
+          </div>
+          <label class="field">
+            <span>Theme</span>
+            <select id="theme-select">
+              <option value="aurora">Aurora</option>
+              <option value="midnight">Midnight</option>
+              <option value="ember">Ember</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Microphone</span>
+            <select id="mic-select"></select>
+          </label>
+          <label class="field">
+            <span>Camera</span>
+            <select id="camera-select"></select>
+          </label>
+          <label class="field">
+            <span>Speaker / Output</span>
+            <select id="speaker-select"></select>
+          </label>
+          <label class="field">
+            <span>Last seen</span>
+            <select id="privacy-last-seen">
+              <option value="everyone">Everyone</option>
+              <option value="contacts">Contacts</option>
+              <option value="nobody">Nobody</option>
+            </select>
+          </label>
+          <label class="check-row">
+            <input id="privacy-online-status" type="checkbox">
+            <span>Show online status</span>
+          </label>
+          <label class="check-row">
+            <input id="privacy-read-receipts" type="checkbox">
+            <span>Send read receipts</span>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button class="button secondary" id="refresh-devices-inside-btn" type="button">Refresh devices</button>
+          <button class="button primary" id="save-settings-btn" type="button">Save settings</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog class="settings-modal" id="legal-modal">
+      <div class="modal-card legal-card">
+        <div class="modal-head">
+          <div>
+            <p class="kicker">Legal</p>
+            <h3 id="legal-title">Terms of Service</h3>
+          </div>
+          <button class="icon-button" id="close-legal-btn" type="button" aria-label="Close legal document">X</button>
+        </div>
+        <div class="legal-scroll" id="legal-content"></div>
+      </div>
+    </dialog>
+
+    <dialog class="settings-modal" id="user-profile-modal">
+      <div class="modal-card legal-card user-profile-card">
+        <div class="modal-head">
+          <div>
+            <p class="kicker">User profile</p>
+            <h3 id="user-profile-name">Z Chat User</h3>
+            <p id="user-profile-username">@user</p>
+          </div>
+          <button class="icon-button" id="close-user-profile-btn" type="button" aria-label="Close profile">X</button>
+        </div>
+        <div class="user-profile-body">
+          <div class="avatar xl" id="user-profile-avatar">U</div>
+          <div class="user-profile-meta">
+            <span id="user-profile-status">Offline</span>
+            <span id="user-profile-plan">FREE</span>
+          </div>
+          <div class="stack-item-actions user-profile-actions">
+            <button class="button primary" id="user-profile-message-btn" type="button">Message</button>
+            <button class="button secondary" id="user-profile-voice-btn" type="button">Voice Call</button>
+            <button class="button secondary" id="user-profile-video-btn" type="button">Video Call</button>
+            <button class="button secondary" id="user-profile-add-btn" type="button">Add Friend</button>
+          </div>
+        </div>
+      </div>
+    </dialog>
+  </div>
+
+  <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="Mobile sections">
+    <button class="section-tab active" id="mobile-nav-chats-btn" type="button"><span class="nav-label">Chats</span></button>
+    <button class="section-tab" id="mobile-nav-friends-btn" type="button"><span class="nav-label">Friends</span></button>
+    <button class="section-tab" id="mobile-nav-rooms-btn" type="button"><span class="nav-label">Groups</span></button>
+    <button class="section-tab" id="mobile-nav-ai-btn" type="button"><span class="nav-label">AI</span></button>
+    <button class="section-tab" id="mobile-nav-settings-btn" type="button"><span class="nav-label">Settings</span></button>
+  </nav>
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</body>
+</html>

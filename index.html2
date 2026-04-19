@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Z Chat | Modern Messaging</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Barlow+Condensed:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <audio id="notify-sound" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" preload="auto"></audio>
+
+    <!-- AUTH SCREEN -->
+    <div id="auth-screen" class="auth-screen active">
+        <div class="auth-container">
+            <div class="auth-card">
+                <h1 class="auth-title">Z Chat</h1>
+                <p class="auth-subtitle">Modern Secure Messaging</p>
+                <input type="text" id="username-input" placeholder="Choose a Username" class="auth-input" autocomplete="off" minlength="3" maxlength="20">
+                <button id="login-btn" class="auth-button">Initialize Uplink</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP -->
+    <div id="app-screen" class="app-screen hidden">
+        <div class="container">
+            <!-- SIDEBAR -->
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <div class="app-title">Z Chat</div>
+                    <input type="text" class="search-bar" id="searchBar" placeholder="Search chats...">
+                </div>
+
+                <div class="sidebar-tabs">
+                    <button class="tab-btn active" id="tab-rooms" data-tab="chats">Chats</button>
+                    <button class="tab-btn" id="tab-contacts" data-tab="contacts">Contacts</button>
+                    <button class="tab-btn" id="tab-profile" data-tab="profile">Profile</button>
+                </div>
+
+                <div class="chat-list" id="chat-list"></div>
+
+                <div class="sidebar-footer">
+                    <button id="theme-btn" class="feature-btn" title="Themes">🎨</button>
+                    <button id="create-group-btn" class="feature-btn" title="New Group">➕</button>
+                    <button id="z-scanner-btn" class="feature-btn" title="Z-Scanner">🔍</button>
+                    <button id="games-btn" class="feature-btn" title="Games">🎮</button>
+                    <button id="logout-btn" class="feature-btn logout" title="Logout">🚪</button>
+                </div>
+            </aside>
+
+            <!-- MAIN CHAT AREA -->
+            <main class="chat-container">
+                <!-- HEADER -->
+                <header class="chat-header">
+                    <div class="header-info">
+                        <div class="chat-avatar" id="header-avatar">🎮</div>
+                        <div>
+                            <div class="header-name" id="header-name">Select a chat</div>
+                            <div class="header-status">
+                                <span class="status-dot" id="status-dot"></span>
+                                <span id="header-status">offline</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="header-actions">
+                        <button id="avatar-btn" class="header-btn" title="Avatar">👤</button>
+                        <button id="status-btn" class="header-btn" title="Status">💬</button>
+                    </div>
+                </header>
+
+                <!-- MESSAGES -->
+                <div class="messages-area" id="messages-area">
+                    <div class="empty-state">
+                        <div class="empty-state-icon">💬</div>
+                        <p>Select a chat to start messaging</p>
+                    </div>
+                </div>
+
+                <!-- TYPING INDICATOR -->
+                <div id="typing-indicator" class="typing-indicator hidden">
+                    <span>Someone is typing</span>
+                    <div class="dot-animate"></div>
+                    <div class="dot-animate"></div>
+                    <div class="dot-animate"></div>
+                </div>
+
+                <!-- INPUT -->
+                <div class="input-area">
+                    <div class="input-group">
+                        <button class="icon-btn" id="emoji-btn" title="Emoji">😊</button>
+                        <textarea class="message-input" id="message-input" placeholder="Type a message..." rows="1"></textarea>
+                    </div>
+                    <button class="send-btn" id="send-btn" title="Send">➤</button>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- ===== MODALS ===== -->
+
+    <!-- Status Modal -->
+    <div id="status-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Update Status</h2>
+                <button class="modal-close" onclick="document.getElementById('status-modal').classList.add('hidden')">✕</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="status-input" placeholder="What's on your mind?" class="modal-input" maxlength="100"></textarea>
+                <div class="preset-buttons">
+                    <button class="preset-btn" onclick="setQuickStatus('🎮 Gaming')">🎮 Gaming</button>
+                    <button class="preset-btn" onclick="setQuickStatus('📚 Studying')">📚 Studying</button>
+                    <button class="preset-btn" onclick="setQuickStatus('😴 Away')">😴 Away</button>
+                </div>
+                <button id="update-status-submit" class="modal-button primary">Update Status</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Avatar Modal -->
+    <div id="avatar-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Choose Avatar</h2>
+                <button class="modal-close" onclick="document.getElementById('avatar-modal').classList.add('hidden')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="avatar-grid">
+                    <button class="avatar-option" onclick="selectAvatar('🎮')">🎮</button>
+                    <button class="avatar-option" onclick="selectAvatar('🚀')">🚀</button>
+                    <button class="avatar-option" onclick="selectAvatar('⚡')">⚡</button>
+                    <button class="avatar-option" onclick="selectAvatar('🔥')">🔥</button>
+                    <button class="avatar-option" onclick="selectAvatar('💎')">💎</button>
+                    <button class="avatar-option" onclick="selectAvatar('🌟')">🌟</button>
+                    <button class="avatar-option" onclick="selectAvatar('👾')">👾</button>
+                    <button class="avatar-option" onclick="selectAvatar('🎯')">🎯</button>
+                    <button class="avatar-option" onclick="selectAvatar('🏆')">🏆</button>
+                    <button class="avatar-option" onclick="selectAvatar('🎨')">🎨</button>
+                    <button class="avatar-option" onclick="selectAvatar('🎭')">🎭</button>
+                    <button class="avatar-option" onclick="selectAvatar('🦄')">🦄</button>
+                </div>
+                <button id="save-avatar" class="modal-button primary">Save Avatar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Theme Modal -->
+    <div id="theme-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Choose Theme</h2>
+                <button class="modal-close" onclick="document.getElementById('theme-modal').classList.add('hidden')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="theme-grid">
+                    <button class="theme-option" onclick="selectTheme('neon')">
+                        <div class="theme-icon">⚡</div>
+                        <div class="theme-name">NEON</div>
+                        <div class="theme-desc">Cyberpunk</div>
+                    </button>
+                    <button class="theme-option" onclick="selectTheme('anime')">
+                        <div class="theme-icon">🌸</div>
+                        <div class="theme-name">ANIME</div>
+                        <div class="theme-desc">Kawaii</div>
+                    </button>
+                    <button class="theme-option" onclick="selectTheme('gaming')">
+                        <div class="theme-icon">🎮</div>
+                        <div class="theme-name">GAMING</div>
+                        <div class="theme-desc">Arcade</div>
+                    </button>
+                    <button class="theme-option" onclick="selectTheme('dark')">
+                        <div class="theme-icon">🌙</div>
+                        <div class="theme-name">DARK</div>
+                        <div class="theme-desc">Pure Black</div>
+                    </button>
+                </div>
+                <button id="save-theme" class="modal-button primary">Apply Theme</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Group Modal -->
+    <div id="create-group-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>New Group</h2>
+                <button class="modal-close" onclick="document.getElementById('create-group-modal').classList.add('hidden')">✕</button>
+            </div>
+            <div class="modal-body">
+                <input type="text" id="group-name-input" placeholder="Group name..." class="modal-input" maxlength="30">
+                <input type="text" id="group-desc-input" placeholder="Description (optional)..." class="modal-input" maxlength="100">
+                <button id="create-group-submit" class="modal-button primary">Create Group</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Z-Scanner Modal -->
+    <div id="scanner-modal" class="modal hidden">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>Z-SCAN ANALYSIS</h2>
+                <button class="modal-close" onclick="document.getElementById('scanner-modal').classList.add('hidden')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="scan-card">
+                    <span class="scan-label">Most Active User</span>
+                    <h3 id="scan-active-user">Analyzing...</h3>
+                </div>
+                <div class="scan-card">
+                    <span class="scan-label">Critical Highlights</span>
+                    <div id="scan-highlights" class="scan-content">Scanning database...</div>
+                </div>
+                <div class="scan-card">
+                    <span class="scan-label">Message Summary</span>
+                    <p id="scan-summary" class="scan-summary">Processing...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Games Modal -->
+    <div id="games-modal" class="modal hidden">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2>Mini Games</h2>
+                <button class="modal-close" onclick="document.getElementById('games-modal').classList.add('hidden')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="games-grid">
+                    <!-- Tic Tac Toe -->
+                    <div class="game-card">
+                        <div class="game-icon">⭕</div>
+                        <h3>Tic Tac Toe</h3>
+                        <div id="tictactoe-board" class="tictactoe-board">
+                            <div class="cell" data-cell="0"></div>
+                            <div class="cell" data-cell="1"></div>
+                            <div class="cell" data-cell="2"></div>
+                            <div class="cell" data-cell="3"></div>
+                            <div class="cell" data-cell="4"></div>
+                            <div class="cell" data-cell="5"></div>
+                            <div class="cell" data-cell="6"></div>
+                            <div class="cell" data-cell="7"></div>
+                            <div class="cell" data-cell="8"></div>
+                        </div>
+                        <div id="tictactoe-status" class="game-status">Your turn (X)</div>
+                        <button id="reset-tictactoe" class="modal-button">New Game</button>
+                    </div>
+
+                    <!-- Quiz -->
+                    <div class="game-card">
+                        <div class="game-icon">🧠</div>
+                        <h3>Quick Quiz</h3>
+                        <div id="quiz-question" class="quiz-question">Click "Start Quiz" to begin!</div>
+                        <div id="quiz-options" class="quiz-options hidden">
+                            <button class="quiz-option"></button>
+                            <button class="quiz-option"></button>
+                            <button class="quiz-option"></button>
+                            <button class="quiz-option"></button>
+                        </div>
+                        <div id="quiz-status" class="game-status">Ready to start!</div>
+                        <div class="game-buttons">
+                            <button id="start-quiz" class="modal-button">Start Quiz</button>
+                            <button id="next-question" class="modal-button hidden">Next</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="game-stats">
+                    <span>Tic Tac Toe: <strong id="tictactoe-wins">0</strong> wins</span>
+                    <span>Quiz: <strong id="quiz-high-score">0</strong> score</span>
+                    <button id="reset-stats" class="modal-button danger">Reset Stats</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./app.js"></script>
+</body>
+</html>

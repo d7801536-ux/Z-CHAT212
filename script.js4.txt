@@ -1,0 +1,347 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getDatabase, ref, push, onValue, remove, serverTimestamp, set, update, get } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js";
+
+// REPLACE WITH YOUR FIREBASE CONFIG
+const firebaseConfig = {
+    apiKey: "AIzaSyAhZXEXJmLaxcnz7nTKuwhDhSuYQSKtBQs",
+    authDomain: "z-chat11.firebaseapp.com",
+    databaseURL: "https://z-chat11-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "z-chat11",
+    storageBucket: "z-chat11.firebasestorage.app",
+    messagingSenderId: "373379915510",
+    appId: "1:373379915510:web:8b4b4502f6facb40c6d6d7"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getDatabase(app);
+const storage = getStorage(app);
+
+// STATE
+let currentUser = null;
+let userData = null;
+let currentChatId = null;
+let isSignUpMode = false;
+let selectedImageFile = null;
+let activeScanMessage = "";
+let callInterval = null;
+
+// DOM Elements
+const authScreen = document.getElementById('auth-screen');
+const appScreen = document.getElementById('app-screen');
+const authForm = document.getElementById('auth-form');
+const authUsername = document.getElementById('auth-username');
+const authEmail = document.getElementById('auth-email');
+const authPassword = document.getElementById('auth-password');
+const toggleAuthMode = document.getElementById('toggle-auth-mode');
+const authModeText = document.getElementById('auth-mode-text');
+const authSubmitBtn = document.getElementById('auth-submit-btn');
+
+const sidebarList = document.getElementById('sidebar-list');
+const messagesArea = document.getElementById('messages-area');
+const messageInput = document.getElementById('message-input');
+const sendBtn = document.getElementById('send-btn');
+const attachBtn = document.getElementById('attach-btn');
+const imageUploadInput = document.getElementById('image-upload-input');
+const imagePreviewContainer = document.getElementById('image-preview-container');
+const imagePreviewImg = document.getElementById('image-preview-img');
+const cancelImageBtn = document.getElementById('cancel-image-btn');
+
+// UTILS
+function showToast(msg) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerText = msg;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function loadTheme() {
+    const theme = localStorage.getItem('zchat_theme') || 'theme-neon';
+    document.body.className = theme;
+}
+loadTheme();
+
+// ================= AUTH SYSTEM =================
+toggleAuthMode.addEventListener('click', () => {
+    isSignUpMode = !isSignUpMode;
+    authUsername.classList.toggle('hidden', !isSignUpMode);
+    authUsername.required = isSignUpMode;
+    toggleAuthMode.innerText = isSignUpMode ? "Already have an account? Sign In" : "Need an account? Sign Up";
+    authModeText.innerText = isSignUpMode ? "Create Identity Node" : "Access Secure Node";
+    authSubmitBtn.innerText = isSignUpMode ? "Register" : "Initialize Uplink";
+});
+
+authForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = authEmail.value;
+    const pass = authPassword.value;
+    
+    try {
+        if (isSignUpMode) {
+            const username = authUsername.value.trim();
+            const userCred = await createUserWithEmailAndPassword(auth, email, pass);
+            await set(ref(db, `users/${userCred.user.uid}`), {
+                uid: userCred.user.uid,
+                username: username,
+                email: email,
+                profilePic: 'https://via.placeholder.com/150',
+                status: 'Available',
+                createdAt: serverTimestamp()
+            });
+            showToast("Account created!");
+        } else {
+            await signInWithEmailAndPassword(auth, email, pass);
+            showToast("Login successful!");
+        }
+    } catch (err) {
+        showToast("Auth Error: " + err.message);
+    }
+});
+
+document.getElementById('google-login-btn').addEventListener('click', async () => {
+    try {
+        const provider = new GoogleAuthProvider();
+        const res = await signInWithPopup(auth, provider);
+        const userRef = ref(db, `users/${res.user.uid}`);
+        const snap = await get(userRef);
+        if(!snap.exists()) {
+            await set(userRef, {
+                uid: res.user.uid,
+                username: res.user.displayName || 'User_' + Date.now().toString().slice(-4),
+                email: res.user.email,
+                profilePic: res.user.photoURL || 'https://via.placeholder.com/150',
+                status: 'Available'
+            });
+        }
+    } catch (err) { showToast("Google Auth Failed"); }
+});
+
+document.getElementById('logout-btn').addEventListener('click', () => signOut(auth));
+
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        currentUser = user;
+        onValue(ref(db, `users/${user.uid}`), (snap) => {
+            userData = snap.val();
+            document.getElementById('settings-username').value = userData.username;
+            document.getElementById('settings-status').value = userData.status;
+        });
+        authScreen.classList.add('hidden');
+        appScreen.classList.remove('hidden');
+        loadSidebar();
+    } else {
+        currentUser = null;
+        userData = null;
+        authScreen.classList.remove('hidden');
+        appScreen.classList.add('hidden');
+    }
+});
+
+// ================= SIDEBAR & USERS =================
+function loadSidebar() {
+    onValue(ref(db, 'users'), (snapshot) => {
+        sidebarList.innerHTML = '';
+        snapshot.forEach(child => {
+            const user = child.val();
+            if(user.uid === currentUser.uid) return; // Skip self
+            
+            const div = document.createElement('div');
+            div.className = 'chat-item';
+            div.innerHTML = `
+                <img src="${user.profilePic}" class="chat-avatar">
+                <div class="chat-info">
+                    <div class="chat-name">${user.username}</div>
+                    <div class="chat-preview">${user.status}</div>
+                </div>
+            `;
+            div.onclick = () => openChat(user);
+            sidebarList.appendChild(div);
+        });
+    });
+}
+
+// ================= CHAT & MESSAGES =================
+function openChat(targetUser) {
+    currentChatId = [currentUser.uid, targetUser.uid].sort().join('_');
+    document.getElementById('header-name').innerText = targetUser.username;
+    document.getElementById('header-avatar').src = targetUser.profilePic;
+    document.getElementById('header-status-text').innerText = targetUser.status;
+    document.getElementById('call-btn').classList.remove('hidden');
+    
+    // Attach event for Call UI
+    document.getElementById('call-btn').onclick = () => startCall(targetUser);
+    
+    onValue(ref(db, `messages/${currentChatId}`), (snapshot) => {
+        messagesArea.innerHTML = '';
+        snapshot.forEach(child => {
+            const msg = child.val();
+            const isSent = msg.senderId === currentUser.uid;
+            const div = document.createElement('div');
+            div.className = `message ${isSent ? 'sent' : 'received'}`;
+            
+            let content = '';
+            if(msg.type === 'image') {
+                content = `<img src="${msg.imageUrl}" class="message-img" onclick="window.open('${msg.imageUrl}')">`;
+            }
+            if(msg.text) {
+                content += `<div class="message-bubble">${msg.text}</div>`;
+            }
+            
+            div.innerHTML = `
+                <div class="msg-sender">${isSent ? 'You' : targetUser.username}</div>
+                ${content}
+                <div class="message-time">${new Date(msg.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+            `;
+            
+            // Allow selecting message for Z-Scanner
+            div.querySelector('.message-bubble')?.addEventListener('dblclick', () => {
+                activeScanMessage = msg.text;
+                document.getElementById('scan-target-msg').innerText = `"${msg.text}"`;
+                document.getElementById('scanner-modal').classList.remove('hidden');
+            });
+            
+            messagesArea.appendChild(div);
+        });
+        messagesArea.scrollTop = messagesArea.scrollHeight;
+    });
+}
+
+// ================= SENDING & IMAGES =================
+attachBtn.onclick = () => imageUploadInput.click();
+imageUploadInput.onchange = (e) => {
+    if(e.target.files[0]) {
+        selectedImageFile = e.target.files[0];
+        imagePreviewImg.src = URL.createObjectURL(selectedImageFile);
+        imagePreviewContainer.classList.remove('hidden');
+    }
+};
+cancelImageBtn.onclick = () => {
+    selectedImageFile = null;
+    imagePreviewContainer.classList.add('hidden');
+    imageUploadInput.value = '';
+};
+
+sendBtn.onclick = async () => {
+    if(!currentChatId) return showToast("Select a chat first!");
+    const text = messageInput.value.trim();
+    if(!text && !selectedImageFile) return;
+    
+    sendBtn.disabled = true;
+    const msgData = {
+        senderId: currentUser.uid,
+        timestamp: Date.now()
+    };
+    
+    try {
+        if(selectedImageFile) {
+            const fileRef = storageRef(storage, `chat_images/${Date.now()}_${selectedImageFile.name}`);
+            await uploadBytes(fileRef, selectedImageFile);
+            msgData.imageUrl = await getDownloadURL(fileRef);
+            msgData.type = 'image';
+        } else {
+            msgData.type = 'text';
+        }
+        if(text) msgData.text = text;
+        
+        await push(ref(db, `messages/${currentChatId}`), msgData);
+        
+        messageInput.value = '';
+        cancelImageBtn.click();
+    } catch(err) {
+        showToast("Failed to send: " + err.message);
+    }
+    sendBtn.disabled = false;
+};
+
+// ================= SETTINGS =================
+document.getElementById('settings-btn').onclick = () => document.getElementById('settings-modal').classList.remove('hidden');
+
+document.getElementById('save-settings-btn').onclick = async () => {
+    const newUsername = document.getElementById('settings-username').value;
+    const newStatus = document.getElementById('settings-status').value;
+    const dpFile = document.getElementById('dp-upload').files[0];
+    
+    let updates = { username: newUsername, status: newStatus };
+    
+    try {
+        if(dpFile) {
+            const dpRef = storageRef(storage, `profiles/${currentUser.uid}`);
+            await uploadBytes(dpRef, dpFile);
+            updates.profilePic = await getDownloadURL(dpRef);
+        }
+        await update(ref(db, `users/${currentUser.uid}`), updates);
+        showToast("Profile Updated!");
+        document.getElementById('settings-modal').classList.add('hidden');
+    } catch(err) {
+        showToast("Update Failed");
+    }
+};
+
+document.querySelectorAll('.theme-btn').forEach(btn => {
+    btn.onclick = () => {
+        const theme = btn.getAttribute('data-theme');
+        document.body.className = theme;
+        localStorage.setItem('zchat_theme', theme);
+    };
+});
+
+// ================= CALL SYSTEM UI =================
+function startCall(user) {
+    const overlay = document.getElementById('call-overlay');
+    document.getElementById('call-name').innerText = `Calling ${user.username}...`;
+    document.getElementById('call-avatar').src = user.profilePic;
+    overlay.classList.remove('hidden');
+    
+    let seconds = 0;
+    callInterval = setInterval(() => {
+        seconds++;
+        const mins = String(Math.floor(seconds / 60)).padStart(2, '0');
+        const secs = String(seconds % 60).padStart(2, '0');
+        document.getElementById('call-timer').innerText = `${mins}:${secs}`;
+    }, 1000);
+}
+
+document.getElementById('end-call-btn').onclick = () => {
+    document.getElementById('call-overlay').classList.add('hidden');
+    clearInterval(callInterval);
+    document.getElementById('call-timer').innerText = "00:00";
+    showToast("Call Ended");
+};
+
+// ================= Z-SCANNER (WIKIPEDIA API) =================
+document.getElementById('z-scanner-btn').onclick = () => {
+    document.getElementById('scan-target-msg').innerText = "Double-click any chat bubble to select a message for scanning.";
+    document.getElementById('scan-results').innerHTML = "";
+    document.getElementById('scanner-modal').classList.remove('hidden');
+};
+
+document.getElementById('run-scan-btn').onclick = async () => {
+    if(!activeScanMessage) return showToast("Select a message first!");
+    
+    const resultsDiv = document.getElementById('scan-results');
+    resultsDiv.innerHTML = "<div class='dot-animate'></div> Scanning global database...";
+    
+    try {
+        // Ping Wikipedia API to Fact Check
+        const url = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(activeScanMessage)}&utf8=&format=json&origin=*`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if(data.query.search.length > 0) {
+            const topResult = data.query.search[0];
+            resultsDiv.innerHTML = `
+                <div style="color: #4ade80; font-weight: bold; margin-bottom: 5px;">[VERIFIED DATAPOINT FOUND]</div>
+                <strong style="color:var(--primary)">${topResult.title}</strong><br>
+                <div style="margin-top: 5px; font-size: 0.9em;">${topResult.snippet}...</div>
+            `;
+        } else {
+            resultsDiv.innerHTML = `<div style="color: #ff4444; font-weight: bold;">[NO MATCH]</div><p>Information could not be verified in the public databanks.</p>`;
+        }
+    } catch(err) {
+        resultsDiv.innerHTML = "API Connection Failed.";
+    }
+};
